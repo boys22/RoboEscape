@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.1)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.1.1)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -98,6 +98,10 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .pick[aria-pressed="true"] { border-color: var(--hazard); background: #221e10; box-shadow: inset 0 0 0 1px var(--hazard); }
 .pick:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .pick-note { font-size: 12px; margin-top: -6px !important; }
+.fs-hint { font-size: 12px; color: var(--hazard) !important; }
+body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; }
+:fullscreen .wrap, :-webkit-full-screen .wrap { padding-block: 0; justify-content: center; }
+:fullscreen .frame { border-radius: 0; }
 .ver { font-family: var(--font-mono); font-size: 11px; text-align: right; margin-top: -6px !important; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn-row .btn { flex: 1 1 140px; }
@@ -122,7 +126,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.1</span><span>1구역 폐기장 · 로봇 5종</span><span>오늘의 시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.1.1</span><span>1구역 폐기장 · 로봇 5종</span><span>오늘의 시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -142,7 +146,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
           <dt>K</dt><dd>점프, 공중에서 J로 내려찍기</dd>
           <dt>L</dt><dd>렌치 투척, 돌아올 때도 피해</dd>
           <dt>Space</dt><dd>대시 (무적, 2회 충전)</dd>
-          <dt>Esc</dt><dd>일시정지 · M 소리 끄기</dd>
+          <dt>Esc</dt><dd>일시정지 · M 소리 끄기 · F 전체 화면</dd>
         </dl>
         <dl class="keys touch-only">
           <dt>왼쪽</dt><dd>엄지를 대고 끌어서 이동 (가까운 적 자동 조준)</dd>
@@ -151,8 +155,9 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
           <dt>투척</dt><dd>렌치를 던지고 회수</dd>
           <dt>대시</dt><dd>무적 회피, 2회 충전</dd>
         </dl>
-        <button class="btn" id="btnStart">시작하기</button>
-        <p class="ver">버전 b0.1</p>
+        <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button></div>
+        <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
+        <p class="ver">버전 b0.1.1</p>
       </div>
     </div>
 
@@ -302,6 +307,7 @@ window.addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (e.code === "Escape" || e.code === "KeyP") { if (state === "play") pause(); else if (state === "pause") resume(); }
   if (e.code === "KeyM") muted = !muted;
+  if (e.code === "KeyF") toggleFS();
   if (e.code === "KeyR" && state === "dead") startRun();
   if (state === "title" && (e.code === "ArrowLeft" || e.code === "ArrowRight")) { const i = CHAR_ORDER.indexOf(charId); setChar(CHAR_ORDER[(i + (e.code === "ArrowRight" ? 1 : CHAR_ORDER.length - 1)) % CHAR_ORDER.length]); }
   if (state === "choice" && /^Digit[1-5]$/.test(e.code)) { choose(+e.code.slice(5) - 1); return; }
@@ -314,42 +320,69 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keyup", (e) => keys.delete(e.code));
 window.addEventListener("blur", () => { keys.clear(); input.mouseL = false; releaseAllTouches(); if (state === "play") pause(); });
 
+// --- 전체 화면 ---
+function canFS() { const d = document.documentElement; return !!(d.requestFullscreen || d.webkitRequestFullscreen); }
+function isFS() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function isStandalone() { return matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches || navigator.standalone === true; }
+async function enterFS() {
+  const d = document.documentElement;
+  try { if (d.requestFullscreen) await d.requestFullscreen({ navigationUI: "hide" }); else if (d.webkitRequestFullscreen) d.webkitRequestFullscreen(); } catch (e) {}
+  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape"); } catch (e) {}
+}
+function exitFS() { try { if (document.exitFullscreen) document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {} }
+function toggleFS() { if (isFS()) exitFS(); else enterFS(); }
+function syncFSButton() {
+  const b = $("btnFS"); if (!b) return;
+  b.hidden = !canFS();
+  b.textContent = isFS() ? "전체 화면 끄기" : "전체 화면";
+  $("fsHint").hidden = canFS() || isStandalone() || !matchMedia("(pointer: coarse)").matches;
+}
+document.addEventListener("fullscreenchange", syncFSButton);
+document.addEventListener("webkitfullscreenchange", syncFSButton);
+
 // --- 터치 컨트롤 (캔버스 좌표 기준) ---
 const TB = {
   atk:   { x: 856, y: 530, r: 60, label: "공격" },
   jump:  { x: 728, y: 572, r: 42, label: "점프" },
   dash:  { x: 872, y: 392, r: 42, label: "대시" },
   throw: { x: 742, y: 446, r: 38, label: "투척" },
-  pause: { x: W / 2, y: 22, r: 18, label: "II" },
+  pause: { x: W / 2 - 24, y: 22, r: 18, label: "II" },
+  fs:    { x: W / 2 + 24, y: 22, r: 18, label: "FS" },
 };
-const touch = { stick: null, held: {} }; // stick: {id, ox, oy, x, y}
+// stick: 처음 닿은 자리(ox, oy)를 기준으로 움직임. 화면에 그리는 위치(dx, dy)는 캔버스 안으로만 보정
+const touch = { stick: null, held: {} };
 function canvasPt(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; }
 function releaseAllTouches() { touch.stick = null; touch.held = {}; }
-cv.addEventListener("pointerdown", (e) => {
-  if (e.pointerType === "touch") {
-    e.preventDefault();
-    touchMode = true;
-    if (state !== "play") return;
-    const p = canvasPt(e);
-    for (const [k, b] of Object.entries(TB)) {
-      if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 12) {
-        touch.held[e.pointerId] = k;
-        if (k === "atk") input.atkP = true;
-        if (k === "jump") input.jumpP = true;
-        if (k === "throw") input.throwP = true;
-        if (k === "dash") input.dashP = true;
-        if (k === "pause") pause();
-        return;
-      }
-    }
-    if (p.x < W * 0.55 && !touch.stick) touch.stick = { id: e.pointerId, ox: p.x, oy: p.y, x: p.x, y: p.y };
-    return;
-  }
+// 터치는 게임 화면 밖(양옆 여백)에서 시작해도 받도록 문서 전체에서 처리
+window.addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "touch") return;
+  touchMode = true;
   if (state !== "play") return;
+  e.preventDefault();
+  const p = canvasPt(e);
+  for (const [k, b] of Object.entries(TB)) {
+    if (k === "fs" && !canFS()) continue;
+    if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 12) {
+      touch.held[e.pointerId] = k;
+      if (k === "atk") input.atkP = true;
+      if (k === "jump") input.jumpP = true;
+      if (k === "throw") input.throwP = true;
+      if (k === "dash") input.dashP = true;
+      if (k === "pause") pause();
+      if (k === "fs") toggleFS();
+      return;
+    }
+  }
+  if (e.clientX < window.innerWidth * 0.5 && !touch.stick) {
+    touch.stick = { id: e.pointerId, ox: p.x, oy: p.y, x: p.x, y: p.y, dx: clamp(p.x, 72, W * 0.5), dy: clamp(p.y, 90, H - 72) };
+  }
+}, { passive: false });
+cv.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "touch" || state !== "play") return;
   if (e.button === 0) { input.mouseL = true; input.atkP = true; }
   if (e.button === 2) input.throwP = true;
 });
-cv.addEventListener("pointermove", (e) => {
+window.addEventListener("pointermove", (e) => {
   if (touch.stick && e.pointerId === touch.stick.id) { const p = canvasPt(e); touch.stick.x = p.x; touch.stick.y = p.y; }
 });
 function endPointer(e) {
@@ -1982,12 +2015,12 @@ function drawTouch() {
   const cd = cooldowns(), p = player;
   // 조이스틱
   const st = touch.stick;
-  const ox = st ? st.ox : 150, oy = st ? st.oy : 520;
+  const ox = st ? st.dx : 150, oy = st ? st.dy : 520;
   ctx.globalAlpha = st ? 0.55 : 0.22;
   ctx.fillStyle = "rgba(20,24,28,0.6)"; ctx.beginPath(); ctx.arc(ox, oy, 62, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = "#9aa4ad"; ctx.lineWidth = 2; ctx.stroke();
   let kx = ox, ky = oy;
-  if (st) { const dx = st.x - ox, dy = st.y - oy, l = Math.hypot(dx, dy), m = Math.min(l, 52); if (l > 0) { kx = ox + dx / l * m; ky = oy + dy / l * m; } }
+  if (st) { const dx = st.x - st.ox, dy = st.y - st.oy, l = Math.hypot(dx, dy), m = Math.min(l, 52); if (l > 0) { kx = ox + dx / l * m; ky = oy + dy / l * m; } }
   ctx.globalAlpha = st ? 0.9 : 0.35;
   ctx.fillStyle = "#cfd6dc"; ctx.beginPath(); ctx.arc(kx, ky, 26, 0, Math.PI * 2); ctx.fill();
   ctx.globalAlpha = 1;
@@ -2013,6 +2046,16 @@ function drawTouch() {
   btn("dash", cd.dash, C.visor, "×" + cd.dashN);
   btn("throw", cd.throw, C.hazard, "");
   // 일시정지
+  if (canFS()) {
+    const fb = TB.fs, k = 6, on = isFS();
+    ctx.fillStyle = "rgba(20,24,28,0.6)"; ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = C.text; ctx.lineWidth = 2; ctx.lineCap = "square"; ctx.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      if (!on) { const vx = fb.x + sx * 8, vy = fb.y + sy * 8; ctx.moveTo(vx - sx * k, vy); ctx.lineTo(vx, vy); ctx.lineTo(vx, vy - sy * k); }
+      else { const vx = fb.x + sx * 3, vy = fb.y + sy * 3; ctx.moveTo(vx + sx * k, vy); ctx.lineTo(vx, vy); ctx.lineTo(vx, vy + sy * k); }
+    }
+    ctx.stroke();
+  }
   const pb = TB.pause;
   ctx.fillStyle = "rgba(20,24,28,0.6)"; ctx.beginPath(); ctx.arc(pb.x, pb.y, pb.r, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = C.text; ctx.fillRect(pb.x - 6, pb.y - 7, 4, 14); ctx.fillRect(pb.x + 2, pb.y - 7, 4, 14);
@@ -2110,6 +2153,7 @@ function frame(now) {
     }
   } else acc = 0;
   render();
+  document.body.classList.toggle("playing", state === "play");
   requestAnimationFrame(frame);
 }
 
@@ -2119,7 +2163,9 @@ fitCanvas();
 requestAnimationFrame(frame);
 
 matchMedia("(orientation: portrait)").addEventListener("change", (e) => { if (e.matches && touchMode && state === "play") pause(); });
-$("btnStart").addEventListener("click", startRun);
+$("btnStart").addEventListener("click", () => { if (touchMode && canFS() && !isFS()) enterFS(); startRun(); });
+$("btnFS").addEventListener("click", toggleFS);
+syncFSButton();
 $("btnRetry").addEventListener("click", startRun);
 $("btnChar").addEventListener("click", () => { state = "title"; $("ovDead").hidden = true; $("ovTitle").hidden = false; $("btnStart").focus(); });
 initPicker();
