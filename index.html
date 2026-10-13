@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.1.2)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.1.3)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -107,7 +107,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 .btn-row .btn { flex: 1 1 140px; }
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 @media (pointer: coarse) { .card.title .intro, .card.title .keys { display: none; } .pick canvas { max-width: 56px; } }
-#ui { position: fixed; left: 0; top: 0; inset: auto; z-index: 1; pointer-events: none; display: block; }
+#ui { position: fixed; left: 0; top: 0; inset: auto; z-index: 3; pointer-events: none; display: block; }
 #safeProbe { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
 .touch-only { display: none; }
 .ov.rotate { display: none; z-index: 5; }
@@ -130,7 +130,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.1.2</span><span>1구역 폐기장 · 로봇 5종</span><span>오늘의 시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.1.3</span><span>1구역 폐기장 · 로봇 5종</span><span>오늘의 시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -161,7 +161,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
         </dl>
         <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button></div>
         <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
-        <p class="ver">버전 b0.1.2</p>
+        <p class="ver">버전 b0.1.3</p>
       </div>
     </div>
 
@@ -374,12 +374,8 @@ function layoutUI() {
   if (mode === "panel") {
     UI.lp = { x0: ins.l, x1: gx };
     UI.rp = { x0: gx + gw, x1: vw - ins.r };
-    const cx = (UI.rp.x0 + UI.rp.x1) / 2, B = UI.bot, sc = Math.min(clamp((avH - 110) / 290, 0.72, 1.15), (UI.rp.x1 - UI.rp.x0) / 132);
     UI.btns = {
-      atk:   { x: cx + 6 * sc, y: B - 58 * sc, r: 46 * sc, label: "공격" },
-      jump:  { x: cx - 24 * sc, y: B - 140 * sc, r: 32 * sc, label: "점프" },
-      dash:  { x: cx + 26 * sc, y: B - 196 * sc, r: 32 * sc, label: "대시" },
-      throw: { x: cx - 20 * sc, y: B - 252 * sc, r: 28 * sc, label: "투척" },
+      ...arcButtons(UI.rp.x1, UI.bot),
       pause: { x: UI.rp.x0 + 30, y: UI.top + 86, r: 17, label: "II" },
       fs:    { x: UI.rp.x0 + 70, y: UI.top + 86, r: 17, label: "FS" },
     };
@@ -391,11 +387,24 @@ function layoutUI() {
 }
 window.addEventListener("resize", () => { UI.key = ""; });
 window.addEventListener("orientationchange", () => { UI.key = ""; });
-// 버튼 위치(화면 px). 겹침 모드는 게임 캔버스 좌표를 화면 좌표로 바꿈
+// 오른쪽 아래 모서리(right, bottom, 화면 px) 기준 부채꼴 버튼 4개. 모든 기기에서 같은 크기
+const BTN_R = 28, ARC_R = 70;
+function arcButtons(right, bottom) {
+  const ax = right - 50, ay = bottom - 46, at = (deg) => [ax + Math.cos(deg * Math.PI / 180) * ARC_R, ay + Math.sin(deg * Math.PI / 180) * ARC_R];
+  const [jx, jy] = at(180), [tx, ty] = at(233), [dx, dy] = at(286);
+  return {
+    atk:   { x: ax, y: ay, r: BTN_R, label: "공격" },
+    jump:  { x: jx, y: jy, r: BTN_R, label: "점프" },
+    throw: { x: tx, y: ty, r: BTN_R, label: "투척" },
+    dash:  { x: dx, y: dy, r: BTN_R, label: "대시" },
+  };
+}
+// 버튼 위치(화면 px)
 function ctrlButtons() {
   if (UI.mode === "panel") return Object.entries(UI.btns).map(([k, b]) => ({ k, ...b }));
   const r = cv.getBoundingClientRect(), sc = r.width / W;
-  return Object.entries(TB).map(([k, b]) => ({ k, x: r.left + b.x * sc, y: r.top + b.y * sc, r: b.r * sc }));
+  const sys = ["pause", "fs"].map((k) => ({ k, x: r.left + TB[k].x * sc, y: r.top + TB[k].y * sc, r: TB[k].r * sc }));
+  return [...Object.entries(arcButtons(r.right, r.bottom)).map(([k, b]) => ({ k, ...b })), ...sys];
 }
 // 조작 버튼과 조이스틱 그리기 (g: 그릴 캔버스, btns: 그 캔버스 좌표, stick: {x,y,kx,ky,r} 또는 null)
 function drawControls(g, btns, stick, idle, faint) {
@@ -415,16 +424,17 @@ function drawControls(g, btns, stick, idle, faint) {
     g.globalAlpha = faint && !on ? 0.55 : 1;
     g.fillStyle = on ? "rgba(255,255,255,0.28)" : "rgba(20,24,28,0.62)";
     g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = "rgba(255,255,255,0.22)"; g.lineWidth = 2; g.stroke();
+    if (k === "atk") { g.strokeStyle = "rgba(255,255,255,0.85)"; g.lineWidth = 3.5; } else { g.strokeStyle = "rgba(255,255,255,0.22)"; g.lineWidth = 2; }
+    g.stroke();
     if (frac !== undefined) {
       g.strokeStyle = frac >= 1 ? col : col + "88"; g.lineWidth = Math.max(3, b.r * 0.1);
       g.beginPath(); g.arc(b.x, b.y, b.r - g.lineWidth, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(frac, 0, 1)); g.stroke();
     }
     g.fillStyle = frac === undefined || frac >= 1 ? C.text : C.muted;
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.font = `700 ${Math.round(b.r * (k === "atk" ? 0.34 : 0.4))}px "IBM Plex Sans KR", sans-serif`;
+    g.font = `700 ${Math.max(12, Math.round(b.r * 0.46))}px "IBM Plex Sans KR", sans-serif`;
     g.fillText(b.label, b.x, b.y - (sub ? b.r * 0.16 : 0));
-    if (sub) { g.font = `600 ${Math.round(b.r * 0.26)}px "IBM Plex Sans KR", monospace`; g.fillStyle = C.muted; g.fillText(sub, b.x, b.y + b.r * 0.28); }
+    if (sub) { g.font = `600 ${Math.max(10, Math.round(b.r * 0.34))}px "IBM Plex Sans KR", sans-serif`; g.fillStyle = C.muted; g.fillText(sub, b.x, b.y + b.r * 0.36); }
     g.globalAlpha = 1;
   };
   btn("atk", p.air ? cd.slam : undefined, "#fff1a8", p.air ? (cd.slam >= 1 ? "내려찍기" : "휘두르기") : "");
@@ -496,7 +506,7 @@ function drawPanels() {
     stick = { x, y, r, kx: l ? x + dx / l * m : x, ky: l ? y + dy / l * m : y };
   }
   const idle = { x: (lp.x0 + lp.x1) / 2, y: UI.bot - 70, r: clamp((lp.x1 - lp.x0) * 0.32, 34, 46) };
-  if (state === "play" || state === "pause" || state === "choice") drawControls(g, UI.btns, stick, stick ? null : idle, false);
+  if (state === "play") drawControls(g, UI.btns, stick, stick ? null : idle, false);
 }
 function hpColor(f) { return f <= 0.3 ? C.danger : f <= 0.5 ? C.hazard : C.good; }
 
@@ -519,10 +529,15 @@ window.addEventListener("pointerdown", (e) => {
   touchMode = true;
   if (state !== "play") return;
   e.preventDefault();
+  let hit = null, hd = Infinity;
   for (const b of ctrlButtons()) {
     if (b.k === "fs" && !canFS()) continue;
-    if (Math.hypot(e.clientX - b.x, e.clientY - b.y) <= b.r + 10) {
-      const k = b.k;
+    const d = Math.hypot(e.clientX - b.x, e.clientY - b.y);
+    if (d <= b.r + 10 && d < hd) { hd = d; hit = b; }
+  }
+  if (hit) {
+    {
+      const k = hit.k;
       touch.held[e.pointerId] = k;
       if (k === "atk") input.atkP = true;
       if (k === "jump") input.jumpP = true;
@@ -2205,7 +2220,10 @@ function drawTouch() {
     const dx = st.x - st.sx, dy = st.y - st.sy, l = Math.hypot(dx, dy), m = Math.min(l / sc, rad);
     stick = { x, y, r: rad, kx: l ? x + dx / l * m : x, ky: l ? y + dy / l * m : y };
   }
-  drawControls(ctx, TB, stick, null, true);
+  const map = {};
+  for (const b of ctrlButtons()) map[b.k] = { ...b, x: (b.x - r.left) / sc, y: (b.y - r.top) / sc, r: b.r / sc, label: (TB[b.k] || {}).label || (b.k === "atk" ? "공격" : "") };
+  for (const [k, b] of Object.entries(arcButtons(0, 0))) map[k].label = b.label;
+  drawControls(ctx, map, stick, null, true);
 }
 
 function render() {
