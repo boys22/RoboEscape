@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.1.1)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.1.2)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -107,6 +107,8 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 .btn-row .btn { flex: 1 1 140px; }
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 @media (pointer: coarse) { .card.title .intro, .card.title .keys { display: none; } .pick canvas { max-width: 56px; } }
+#ui { position: fixed; left: 0; top: 0; inset: auto; z-index: 1; pointer-events: none; display: block; }
+#safeProbe { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
 .touch-only { display: none; }
 .ov.rotate { display: none; z-index: 5; }
 .frame { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
@@ -123,10 +125,12 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 </style>
 </head>
 <body>
+<canvas id="ui" hidden></canvas>
+<div id="safeProbe" aria-hidden="true"></div>
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.1.1</span><span>1구역 폐기장 · 로봇 5종</span><span>오늘의 시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.1.2</span><span>1구역 폐기장 · 로봇 5종</span><span>오늘의 시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -157,7 +161,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
         </dl>
         <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button></div>
         <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
-        <p class="ver">버전 b0.1.1</p>
+        <p class="ver">버전 b0.1.2</p>
       </div>
     </div>
 
@@ -340,6 +344,162 @@ function syncFSButton() {
 document.addEventListener("fullscreenchange", syncFSButton);
 document.addEventListener("webkitfullscreenchange", syncFSButton);
 
+// --- 모바일 화면 배치: 양옆 패널(panel) / 화면 위 겹침(overlay) / PC ---
+const ui = document.getElementById("ui"), uctx = ui.getContext("2d");
+const UI = { mode: "pc", vw: 0, vh: 0, gx: 0, gy: 0, gw: 0, gh: 0, top: 0, bot: 0, lp: null, rp: null, btns: {}, key: "" };
+function safeInsets() {
+  const cs = getComputedStyle($("safeProbe"));
+  return { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0, t: parseFloat(cs.paddingTop) || 0, b: parseFloat(cs.paddingBottom) || 0 };
+}
+function layoutUI() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const key = vw + "x" + vh + ":" + touchMode;
+  if (key === UI.key) return;
+  UI.key = key;
+  const fr = $("frame");
+  if (!touchMode || vh > vw) {
+    if (UI.mode !== "pc") { fr.removeAttribute("style"); ui.hidden = true; }
+    UI.mode = "pc";
+    return;
+  }
+  const ins = safeInsets(), MIN = 118;
+  const usable = vw - ins.l - ins.r, avH = vh - ins.t - ins.b;
+  let gh = avH, gw = gh * 1.5, mode = "panel";
+  if (usable - gw < 2 * MIN) { gw = usable - 2 * MIN; gh = gw / 1.5; }
+  if (gw < usable * 0.55) { mode = "overlay"; gw = Math.min(usable, avH * 1.5); gh = gw / 1.5; }
+  const gx = ins.l + (usable - gw) / 2, gy = ins.t + (avH - gh) / 2;
+  Object.assign(UI, { mode, vw, vh, gx, gy, gw, gh, top: ins.t, bot: vh - ins.b });
+  fr.style.cssText = `position:fixed;left:${gx}px;top:${gy}px;width:${gw}px;height:${gh}px;margin:0;max-width:none;aspect-ratio:auto;z-index:2;border-radius:0;`;
+  ui.hidden = mode !== "panel";
+  if (mode === "panel") {
+    UI.lp = { x0: ins.l, x1: gx };
+    UI.rp = { x0: gx + gw, x1: vw - ins.r };
+    const cx = (UI.rp.x0 + UI.rp.x1) / 2, B = UI.bot, sc = Math.min(clamp((avH - 110) / 290, 0.72, 1.15), (UI.rp.x1 - UI.rp.x0) / 132);
+    UI.btns = {
+      atk:   { x: cx + 6 * sc, y: B - 58 * sc, r: 46 * sc, label: "공격" },
+      jump:  { x: cx - 24 * sc, y: B - 140 * sc, r: 32 * sc, label: "점프" },
+      dash:  { x: cx + 26 * sc, y: B - 196 * sc, r: 32 * sc, label: "대시" },
+      throw: { x: cx - 20 * sc, y: B - 252 * sc, r: 28 * sc, label: "투척" },
+      pause: { x: UI.rp.x0 + 30, y: UI.top + 86, r: 17, label: "II" },
+      fs:    { x: UI.rp.x0 + 70, y: UI.top + 86, r: 17, label: "FS" },
+    };
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    ui.width = Math.round(vw * dpr); ui.height = Math.round(vh * dpr);
+    ui.style.width = vw + "px"; ui.style.height = vh + "px";
+    uctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+}
+window.addEventListener("resize", () => { UI.key = ""; });
+window.addEventListener("orientationchange", () => { UI.key = ""; });
+// 버튼 위치(화면 px). 겹침 모드는 게임 캔버스 좌표를 화면 좌표로 바꿈
+function ctrlButtons() {
+  if (UI.mode === "panel") return Object.entries(UI.btns).map(([k, b]) => ({ k, ...b }));
+  const r = cv.getBoundingClientRect(), sc = r.width / W;
+  return Object.entries(TB).map(([k, b]) => ({ k, x: r.left + b.x * sc, y: r.top + b.y * sc, r: b.r * sc }));
+}
+// 조작 버튼과 조이스틱 그리기 (g: 그릴 캔버스, btns: 그 캔버스 좌표, stick: {x,y,kx,ky,r} 또는 null)
+function drawControls(g, btns, stick, idle, faint) {
+  const cd = cooldowns(), p = player;
+  if (stick || idle) {
+    const s0 = stick || idle;
+    g.globalAlpha = stick ? 0.6 : faint ? 0.12 : 0.22;
+    g.fillStyle = "rgba(20,24,28,0.6)"; g.beginPath(); g.arc(s0.x, s0.y, s0.r * 1.2, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "#9aa4ad"; g.lineWidth = 2; g.stroke();
+    g.globalAlpha = stick ? 0.9 : faint ? 0.18 : 0.35;
+    g.fillStyle = "#cfd6dc"; g.beginPath(); g.arc(stick ? s0.kx : s0.x, stick ? s0.ky : s0.y, s0.r * 0.5, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 1;
+  }
+  const held = Object.values(touch.held);
+  const btn = (k, frac, col, sub) => {
+    const b = btns[k], on = held.includes(k);
+    g.globalAlpha = faint && !on ? 0.55 : 1;
+    g.fillStyle = on ? "rgba(255,255,255,0.28)" : "rgba(20,24,28,0.62)";
+    g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "rgba(255,255,255,0.22)"; g.lineWidth = 2; g.stroke();
+    if (frac !== undefined) {
+      g.strokeStyle = frac >= 1 ? col : col + "88"; g.lineWidth = Math.max(3, b.r * 0.1);
+      g.beginPath(); g.arc(b.x, b.y, b.r - g.lineWidth, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(frac, 0, 1)); g.stroke();
+    }
+    g.fillStyle = frac === undefined || frac >= 1 ? C.text : C.muted;
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = `700 ${Math.round(b.r * (k === "atk" ? 0.34 : 0.4))}px "IBM Plex Sans KR", sans-serif`;
+    g.fillText(b.label, b.x, b.y - (sub ? b.r * 0.16 : 0));
+    if (sub) { g.font = `600 ${Math.round(b.r * 0.26)}px "IBM Plex Sans KR", monospace`; g.fillStyle = C.muted; g.fillText(sub, b.x, b.y + b.r * 0.28); }
+    g.globalAlpha = 1;
+  };
+  btn("atk", p.air ? cd.slam : undefined, "#fff1a8", p.air ? (cd.slam >= 1 ? "내려찍기" : "휘두르기") : "");
+  btn("jump", undefined, C.visor, "");
+  btn("dash", cd.dash, C.visor, "×" + cd.dashN);
+  btn("throw", cd.throw, C.hazard, "");
+  const icon = (b, fn) => { g.fillStyle = "rgba(20,24,28,0.7)"; g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill(); g.strokeStyle = "rgba(255,255,255,0.2)"; g.lineWidth = 1.5; g.stroke(); fn(); };
+  if (canFS()) icon(btns.fs, () => {
+    const fb = btns.fs, k = 5, on = isFS();
+    g.strokeStyle = C.text; g.lineWidth = 2; g.lineCap = "square"; g.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      if (!on) { const vx = fb.x + sx * 7, vy = fb.y + sy * 7; g.moveTo(vx - sx * k, vy); g.lineTo(vx, vy); g.lineTo(vx, vy - sy * k); }
+      else { const vx = fb.x + sx * 2.5, vy = fb.y + sy * 2.5; g.moveTo(vx + sx * k, vy); g.lineTo(vx, vy); g.lineTo(vx, vy + sy * k); }
+    }
+    g.stroke();
+  });
+  icon(btns.pause, () => { const pb = btns.pause; g.fillStyle = C.text; g.fillRect(pb.x - 6, pb.y - 7, 4, 14); g.fillRect(pb.x + 2, pb.y - 7, 4, 14); });
+}
+// 패널 그리기
+function drawPanels() {
+  if (UI.mode !== "panel") return;
+  const g = uctx, { vw, vh, lp, rp, gx, gw } = UI;
+  g.clearRect(0, 0, vw, vh);
+  // 금속판 배경
+  for (const [x0, x1, edge] of [[0, gx, gx], [gx + gw, vw, gx + gw]]) {
+    const gr = g.createLinearGradient(0, 0, 0, vh); gr.addColorStop(0, "#1d2126"); gr.addColorStop(1, "#15181c");
+    g.fillStyle = gr; g.fillRect(x0, 0, x1 - x0, vh);
+    g.fillStyle = "#2a2f35"; g.fillRect(edge - (edge === gx ? 6 : 0), 0, 6, vh);
+    g.save(); g.beginPath(); g.rect(edge - (edge === gx ? 6 : 0), 0, 6, vh); g.clip();
+    g.fillStyle = "rgba(242,194,48,0.55)"; for (let y = -20; y < vh; y += 18) { g.beginPath(); g.moveTo(edge - 8, y); g.lineTo(edge + 8, y + 12); g.lineTo(edge + 8, y + 18); g.lineTo(edge - 8, y + 6); g.fill(); }
+    g.restore();
+    g.fillStyle = "#2e343b"; for (const yy of [14, vh - 14]) for (const xx of [x0 + 12, x1 - 18]) { g.beginPath(); g.arc(xx + 3, yy, 2.5, 0, Math.PI * 2); g.fill(); }
+  }
+  if (state === "title" || !player || !player.st) {
+    g.fillStyle = "#3a4048"; g.font = '700 13px "IBM Plex Mono", monospace'; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("B-07", (lp.x0 + lp.x1) / 2, vh / 2); g.fillText("ESCAPE", (rp.x0 + rp.x1) / 2, vh / 2);
+    return;
+  }
+  const p = player, L0 = lp.x0 + 12, LW = lp.x1 - lp.x0 - 24, T = UI.top + 12;
+  // 왼쪽: 체력
+  g.textAlign = "left"; g.textBaseline = "middle";
+  g.font = '700 12px "IBM Plex Mono", monospace'; g.fillStyle = C.visor; g.fillText("B-07", L0, T + 6);
+  g.fillStyle = C.text; g.textAlign = "right"; g.fillText(Math.ceil(p.hp) + "/" + p.maxHp, L0 + LW, T + 6);
+  g.fillStyle = "#2b1a18"; g.fillRect(L0, T + 16, LW, 10);
+  g.fillStyle = "rgba(255,255,255,0.75)"; g.fillRect(L0, T + 16, LW * clamp(p.hpLag / p.maxHp, 0, 1), 10);
+  g.fillStyle = hpColor(p.hp / p.maxHp); g.fillRect(L0, T + 16, LW * clamp(p.hp / p.maxHp, 0, 1), 10);
+  // 모듈 5칸
+  const cw = (LW - 8) / 5;
+  g.textAlign = "center";
+  SLOT_ORDER.forEach((sl, i) => {
+    const m = p.mods[sl], x = L0 + i * (cw + 2), y = T + 34;
+    g.fillStyle = "#101215"; g.fillRect(x, y, cw, 20);
+    if (m) { g.fillStyle = FAM[MODS[m.id].fam].color; g.fillRect(x + 2, y + 2, cw - 4, 16); g.strokeStyle = RARITY[m.r].color; g.lineWidth = 2; g.strokeRect(x + 1, y + 1, cw - 2, 18); }
+    g.fillStyle = m ? "#101214" : "#4a525b"; g.font = '700 11px "IBM Plex Sans KR", sans-serif'; g.fillText(SLOTS[sl][0], x + cw / 2, y + 10.5);
+  });
+  // 오른쪽: 방·점수
+  const R0 = rp.x0 + 12;
+  g.textAlign = "left"; g.fillStyle = C.text; g.font = '700 13px "IBM Plex Sans KR", sans-serif';
+  g.fillText("방 " + room.n + "/" + ZONE_ROOMS, R0, T + 6);
+  const waveTxt = room.kind === "station" ? "충전소" : room.doorOpen ? "출구 개방" : room.cleared ? "보상 획득" : room.wave === 0 ? "준비" : "웨이브 " + room.wave + "/" + room.waves;
+  g.fillStyle = C.muted; g.font = '500 12px "IBM Plex Sans KR", sans-serif'; g.fillText(waveTxt, R0, T + 26);
+  g.fillStyle = C.hazard; g.font = '700 13px "IBM Plex Mono", monospace'; g.fillText(String(run.score), R0, T + 46);
+  // 조작
+  const st = touch.stick;
+  let stick = null;
+  if (st) {
+    const r = st.rad, x = clamp(st.sx, lp.x0 + r * 1.2 + 4, lp.x1 - r * 1.2 - 4), y = clamp(st.sy, T + 70 + r * 1.2, UI.bot - r * 1.2 - 4);
+    const dx = st.x - st.sx, dy = st.y - st.sy, l = Math.hypot(dx, dy), m = Math.min(l, r);
+    stick = { x, y, r, kx: l ? x + dx / l * m : x, ky: l ? y + dy / l * m : y };
+  }
+  const idle = { x: (lp.x0 + lp.x1) / 2, y: UI.bot - 70, r: clamp((lp.x1 - lp.x0) * 0.32, 34, 46) };
+  if (state === "play" || state === "pause" || state === "choice") drawControls(g, UI.btns, stick, stick ? null : idle, false);
+}
+function hpColor(f) { return f <= 0.3 ? C.danger : f <= 0.5 ? C.hazard : C.good; }
+
 // --- 터치 컨트롤 (캔버스 좌표 기준) ---
 const TB = {
   atk:   { x: 856, y: 530, r: 60, label: "공격" },
@@ -359,10 +519,10 @@ window.addEventListener("pointerdown", (e) => {
   touchMode = true;
   if (state !== "play") return;
   e.preventDefault();
-  const p = canvasPt(e);
-  for (const [k, b] of Object.entries(TB)) {
-    if (k === "fs" && !canFS()) continue;
-    if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 12) {
+  for (const b of ctrlButtons()) {
+    if (b.k === "fs" && !canFS()) continue;
+    if (Math.hypot(e.clientX - b.x, e.clientY - b.y) <= b.r + 10) {
+      const k = b.k;
       touch.held[e.pointerId] = k;
       if (k === "atk") input.atkP = true;
       if (k === "jump") input.jumpP = true;
@@ -374,7 +534,8 @@ window.addEventListener("pointerdown", (e) => {
     }
   }
   if (e.clientX < window.innerWidth * 0.5 && !touch.stick) {
-    touch.stick = { id: e.pointerId, ox: p.x, oy: p.y, x: p.x, y: p.y, dx: clamp(p.x, 72, W * 0.5), dy: clamp(p.y, 90, H - 72) };
+    const sc = cv.getBoundingClientRect().width / W;
+    touch.stick = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, rad: UI.mode === "panel" ? clamp((UI.lp.x1 - UI.lp.x0) * 0.32, 34, 46) : 52 * sc };
   }
 }, { passive: false });
 cv.addEventListener("pointerdown", (e) => {
@@ -383,7 +544,7 @@ cv.addEventListener("pointerdown", (e) => {
   if (e.button === 2) input.throwP = true;
 });
 window.addEventListener("pointermove", (e) => {
-  if (touch.stick && e.pointerId === touch.stick.id) { const p = canvasPt(e); touch.stick.x = p.x; touch.stick.y = p.y; }
+  if (touch.stick && e.pointerId === touch.stick.id) { touch.stick.x = e.clientX; touch.stick.y = e.clientY; }
 });
 function endPointer(e) {
   if (touch.stick && e.pointerId === touch.stick.id) touch.stick = null;
@@ -401,8 +562,8 @@ function moveVec() {
   if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
   if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
   if (touch.stick) {
-    const dx = touch.stick.x - touch.stick.ox, dy = touch.stick.y - touch.stick.oy, l = Math.hypot(dx, dy);
-    if (l > 8) { const k = Math.min(1, l / 52); mx = dx / l * k; my = dy / l * k; }
+    const st = touch.stick, dx = st.x - st.sx, dy = st.y - st.sy, l = Math.hypot(dx, dy);
+    if (l > st.rad * 0.15) { const k = Math.min(1, l / st.rad); mx = dx / l * k; my = dy / l * k; }
   }
   const l = Math.hypot(mx, my);
   if (l > 1) { mx /= l; my /= l; }
@@ -461,7 +622,7 @@ function newPlayer() {
     atk: { i: -1, t: 0, dur: 0, ang: 0, hit: null, queued: false, comboT: 0, next: 0, cd: 0 },
     wrench: null, specCd: 0,
     z: 0, vz: 0, air: false, slam: null, slamCd: 0, squash: 0, mark: null,
-    mods: {}, wups: {}, st: null, walk: 0, moving: false,
+    mods: {}, wups: {}, st: null, walk: 0, moving: false, hpLag: 100, lagT: 0, healGlow: 0,
   };
 }
 
@@ -635,7 +796,7 @@ function hurtPlayer(dmg, from, cause) {
   const p = player;
   if (p.dead || p.inv > 0 || p.dash.t > 0) return;
   dmg = Math.max(1, Math.round(dmg * (1 - p.st.armor)));
-  p.hp -= dmg; p.inv = 0.75; hurtFlash = 1; room.tookDamage = true;
+  p.hp -= dmg; p.inv = 0.75; hurtFlash = 1; room.tookDamage = true; p.lagT = 0.4;
   if (has("volt_passive")) { const v = mval("volt_passive"); const near = enemies.filter((e) => !e.dead && !e.drop && dist(e, p) < 170).sort((a, b) => dist(a, p) - dist(b, p)).slice(0, 3); for (const e of near) { zap(p.x, p.y, 20, e.x, e.y, 16); hurtEnemy(e, v, angTo(p, e), 60, false, "proc", FAM.volt.color); } if (near.length) sfx("zap"); }
   if (from) { const a = angTo(from, p); p.kx += Math.cos(a) * 320; p.ky += Math.sin(a) * 320; }
   addText(p.x, p.y - 26, "-" + dmg, C.danger, true);
@@ -940,6 +1101,9 @@ function update(dt) {
       if (dd < min && dd > 0) { const an = angTo(e, p); p.x = e.x + Math.cos(an) * min; p.y = e.y + Math.sin(an) * min; }
     }
     if (p.inv > 0) p.inv -= dt;
+    if (p.hpLag > p.hp) { if (p.lagT > 0) p.lagT -= dt; else p.hpLag = Math.max(p.hp, p.hpLag - p.maxHp * 0.9 * dt); }
+    else { if (p.hp > p.hpLag + 0.5) p.healGlow = 0.6; p.hpLag = p.hp; }
+    if (p.healGlow > 0) p.healGlow -= dt;
 
     // 공격 입력
     if (a.cd > 0) a.cd -= dt;
@@ -1474,11 +1638,11 @@ function drawDrum(g, x, y, s, o) {
 }
 
 const CHARS = {
-  moni:    { name: "모니", kind: "화면 얼굴", draw: drawMoni, s: 0.29, h: 52 },
-  helmet:  { name: "안전모", kind: "공장 작업반장", draw: drawHelmet, s: 0.32, h: 46 },
-  springy: { name: "통통이", kind: "스프링 다리", draw: drawSpringy, s: 0.29, h: 54 },
-  prop:    { name: "팽이", kind: "프로펠러 비행", draw: drawProp, s: 0.29, h: 52 },
-  drum:    { name: "깡통이", kind: "드럼통 몸", draw: drawDrum, s: 0.33, h: 44 },
+  moni:    { name: "모니", kind: "화면 얼굴", draw: drawMoni, s: 0.29, h: 52, bar: 58 },
+  helmet:  { name: "안전모", kind: "공장 작업반장", draw: drawHelmet, s: 0.32, h: 46, bar: 52 },
+  springy: { name: "통통이", kind: "스프링 다리", draw: drawSpringy, s: 0.29, h: 54, bar: 60 },
+  prop:    { name: "팽이", kind: "프로펠러 비행", draw: drawProp, s: 0.29, h: 52, bar: 60 },
+  drum:    { name: "깡통이", kind: "드럼통 몸", draw: drawDrum, s: 0.33, h: 44, bar: 54 },
 };
 const CHAR_ORDER = ["moni", "helmet", "springy", "prop", "drum"];
 let charId = "moni";
@@ -1750,6 +1914,25 @@ function drawRobot(x, y, face, alpha, z = 0) {
   ctx.globalAlpha = 1;
 }
 
+// 머리 위 체력바 (항상 표시, 가려지지 않게 맨 위에)
+function drawPlayerBar() {
+  const p = player;
+  if (!p || p.dead || !p.st) return;
+  const w = 38, h = 5, x = p.x - w / 2, y = syf(p.y) - p.z - CHARS[charId].bar - 6;
+  const f = clamp(p.hp / p.maxHp, 0, 1), lag = clamp(p.hpLag / p.maxHp, 0, 1);
+  const blink = f <= 0.3 ? 0.55 + 0.45 * Math.sin(performance.now() / 140) : 1;
+  ctx.save();
+  ctx.fillStyle = "rgba(8,10,12,0.8)"; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.strokeStyle = C.visor; ctx.lineWidth = 1; ctx.strokeRect(x - 1.5, y - 1.5, w + 3, h + 3);
+  ctx.fillStyle = "#3a1d1a"; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fillRect(x, y, w * lag, h);
+  ctx.globalAlpha = blink; ctx.fillStyle = hpColor(f); ctx.fillRect(x, y, w * f, h);
+  if (p.healGlow > 0) { ctx.globalAlpha = p.healGlow / 0.6; ctx.fillStyle = "#c9ffe0"; ctx.fillRect(x, y, w * f, h); }
+  ctx.globalAlpha = 1;
+  for (let i = 1; i < 4; i++) { ctx.fillStyle = "rgba(8,10,12,0.6)"; ctx.fillRect(x + (w * i) / 4, y, 1, h); }
+  ctx.restore();
+}
+
 function drawPlayer() {
   const p = player;
   for (const g of afterimages) {
@@ -1962,13 +2145,15 @@ function cooldowns() {
   };
 }
 function drawHud() {
+  if (UI.mode === "panel") return;
   const p = player;
   ctx.font = '700 12px "IBM Plex Mono", "IBM Plex Sans KR", monospace'; ctx.textBaseline = "middle"; ctx.textAlign = "left";
   // 체력
   ctx.fillStyle = "rgba(10,12,14,0.75)"; ctx.fillRect(12, 8, 270, 26);
   ctx.fillStyle = C.visor; ctx.fillText("B-07", 20, 21);
   ctx.fillStyle = "#2b1a18"; ctx.fillRect(60, 14, 150, 14);
-  ctx.fillStyle = p.hp / p.maxHp < 0.3 ? C.danger : C.good; ctx.fillRect(60, 14, 150 * p.hp / p.maxHp, 14);
+  ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.fillRect(60, 14, 150 * clamp(p.hpLag / p.maxHp, 0, 1), 14);
+  ctx.fillStyle = hpColor(p.hp / p.maxHp); ctx.fillRect(60, 14, 150 * clamp(p.hp / p.maxHp, 0, 1), 14);
   ctx.fillStyle = C.text; ctx.fillText(Math.ceil(p.hp) + "/" + p.maxHp, 216, 21);
   // 우측 정보
   ctx.textAlign = "right";
@@ -2012,54 +2197,15 @@ function drawHud() {
 }
 
 function drawTouch() {
-  const cd = cooldowns(), p = player;
-  // 조이스틱
-  const st = touch.stick;
-  const ox = st ? st.dx : 150, oy = st ? st.dy : 520;
-  ctx.globalAlpha = st ? 0.55 : 0.22;
-  ctx.fillStyle = "rgba(20,24,28,0.6)"; ctx.beginPath(); ctx.arc(ox, oy, 62, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = "#9aa4ad"; ctx.lineWidth = 2; ctx.stroke();
-  let kx = ox, ky = oy;
-  if (st) { const dx = st.x - st.ox, dy = st.y - st.oy, l = Math.hypot(dx, dy), m = Math.min(l, 52); if (l > 0) { kx = ox + dx / l * m; ky = oy + dy / l * m; } }
-  ctx.globalAlpha = st ? 0.9 : 0.35;
-  ctx.fillStyle = "#cfd6dc"; ctx.beginPath(); ctx.arc(kx, ky, 26, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 1;
-  // 버튼
-  const held = Object.values(touch.held);
-  const btn = (k, frac, col, sub) => {
-    const b = TB[k], on = held.includes(k);
-    ctx.fillStyle = on ? "rgba(255,255,255,0.28)" : "rgba(20,24,28,0.55)";
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 2; ctx.stroke();
-    if (frac !== undefined) {
-      ctx.strokeStyle = frac >= 1 ? col : col + "88"; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(frac, 0, 1)); ctx.stroke();
-    }
-    ctx.fillStyle = frac === undefined || frac >= 1 ? C.text : C.muted;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.font = (k === "atk" ? "700 18px" : "700 14px") + ' "IBM Plex Sans KR", sans-serif';
-    ctx.fillText(b.label, b.x, b.y - (sub ? 7 : 0));
-    if (sub) { ctx.font = '600 11px "IBM Plex Mono", monospace'; ctx.fillStyle = C.muted; ctx.fillText(sub, b.x, b.y + 11); }
-  };
-  btn("atk", p.air ? cd.slam : undefined, "#fff1a8", p.air ? (cd.slam >= 1 ? "내려찍기" : "휘두르기") : "");
-  btn("jump", undefined, C.visor, "");
-  btn("dash", cd.dash, C.visor, "×" + cd.dashN);
-  btn("throw", cd.throw, C.hazard, "");
-  // 일시정지
-  if (canFS()) {
-    const fb = TB.fs, k = 6, on = isFS();
-    ctx.fillStyle = "rgba(20,24,28,0.6)"; ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = C.text; ctx.lineWidth = 2; ctx.lineCap = "square"; ctx.beginPath();
-    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      if (!on) { const vx = fb.x + sx * 8, vy = fb.y + sy * 8; ctx.moveTo(vx - sx * k, vy); ctx.lineTo(vx, vy); ctx.lineTo(vx, vy - sy * k); }
-      else { const vx = fb.x + sx * 3, vy = fb.y + sy * 3; ctx.moveTo(vx + sx * k, vy); ctx.lineTo(vx, vy); ctx.lineTo(vx, vy + sy * k); }
-    }
-    ctx.stroke();
+  // 겹침 모드(패널이 들어가지 않는 화면): 게임 캔버스 위에 반투명으로
+  const st = touch.stick, r = cv.getBoundingClientRect(), sc = r.width / W;
+  let stick = null;
+  if (st) {
+    const rad = st.rad / sc, x = clamp((st.sx - r.left) / sc, 72, W * 0.5), y = clamp((st.sy - r.top) / sc, 90, H - 72);
+    const dx = st.x - st.sx, dy = st.y - st.sy, l = Math.hypot(dx, dy), m = Math.min(l / sc, rad);
+    stick = { x, y, r: rad, kx: l ? x + dx / l * m : x, ky: l ? y + dy / l * m : y };
   }
-  const pb = TB.pause;
-  ctx.fillStyle = "rgba(20,24,28,0.6)"; ctx.beginPath(); ctx.arc(pb.x, pb.y, pb.r, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = C.text; ctx.fillRect(pb.x - 6, pb.y - 7, 4, 14); ctx.fillRect(pb.x + 2, pb.y - 7, 4, 14);
-  ctx.textAlign = "left";
+  drawControls(ctx, TB, stick, null, true);
 }
 
 function render() {
@@ -2105,6 +2251,7 @@ function render() {
   }
   ctx.globalAlpha = 1;
   drawFrontWall();
+  drawPlayerBar();
   // 숫자
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   for (const t of texts) {
@@ -2152,7 +2299,9 @@ function frame(now) {
       if (state === "play" || state === "dead") update(STEP);
     }
   } else acc = 0;
+  layoutUI();
   render();
+  drawPanels();
   document.body.classList.toggle("playing", state === "play");
   requestAnimationFrame(frame);
 }
