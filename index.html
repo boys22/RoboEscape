@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.2.3)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.3)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -74,6 +74,8 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .opt-line { font-size: 12px; color: var(--fam); font-weight: 500; }
 .opt-desc { font-size: 13.5px; line-height: 1.45; }
 .opt-note { font-size: 12px; color: var(--muted); }
+.opt-price { align-self: flex-start; font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: #1a1408; background: #e0bf86; border-radius: 3px; padding: 1px 6px; }
+.opt[disabled] .opt-price { background: #3a3f46; color: var(--muted); }
 .opt kbd { position: absolute; right: 8px; bottom: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .build { font-size: 12.5px; color: var(--muted); }
 @media (pointer: coarse) {
@@ -138,7 +140,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.2.3</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.3</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -172,7 +174,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
         </dl>
         <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button></div>
         <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
-        <p class="ver">버전 b0.2.3</p>
+        <p class="ver">버전 b0.3</p>
       </div>
     </div>
 
@@ -185,6 +187,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
         <h2 id="chTitle">강화 모듈</h2>
         <p id="chSub"></p>
         <div class="opts" id="chCards"></div>
+        <div class="btn-row" id="chFoot" hidden><button class="btn ghost" id="btnReroll" type="button">진열 바꾸기</button><button class="btn" id="btnLeave" type="button">상점 나가기</button></div>
       </div>
     </div>
 
@@ -313,6 +316,7 @@ function sfx(n) {
     case "flame": noise(0.12, 0.05, "bandpass", 500, 900, 0.8); break;
     case "ignite": noise(0.3, 0.15, "lowpass", 1800, 300); tone("sine", 160, 80, 0.25, 0.08); break;
     case "overheat": tone("sawtooth", 320, 140, 0.35, 0.09); noise(0.3, 0.08, "highpass", 2000, 600); break;
+    case "revive": tone("sine", 200, 900, 0.5, 0.12); tone("triangle", 400, 1600, 0.4, 0.06, 0.1); break;
     case "land": tone("sine", 140, 45, 0.14, 0.14); noise(0.1, 0.08, "lowpass", 900, 150); break;
   }
 }
@@ -499,6 +503,7 @@ function drawPanels() {
   // 왼쪽: 체력
   g.textAlign = "left"; g.textBaseline = "middle";
   g.font = '700 12px "IBM Plex Mono", monospace'; g.fillStyle = C.visor; g.fillText("B-07", L0, T + 6);
+  drawBattery(g, L0 + 38, T, p.battery);
   g.fillStyle = C.text; g.textAlign = "right"; g.fillText(Math.ceil(p.hp) + "/" + p.maxHp, L0 + LW, T + 6);
   g.fillStyle = "#2b1a18"; g.fillRect(L0, T + 16, LW, 10);
   g.fillStyle = "rgba(255,255,255,0.75)"; g.fillRect(L0, T + 16, LW * clamp(p.hpLag / p.maxHp, 0, 1), 10);
@@ -512,6 +517,8 @@ function drawPanels() {
     if (m) { g.fillStyle = FAM[MODS[m.id].fam].color; g.fillRect(x + 2, y + 2, cw - 4, 16); g.strokeStyle = RARITY[m.r].color; g.lineWidth = 2; g.strokeRect(x + 1, y + 1, cw - 2, 18); }
     g.fillStyle = m ? "#101214" : "#4a525b"; g.font = '700 11px "IBM Plex Sans KR", sans-serif'; g.fillText(SLOTS[sl][0], x + cw / 2, y + 10.5);
   });
+  g.textAlign = "left"; g.fillStyle = "#e0bf86"; g.font = '700 12px "IBM Plex Sans KR", sans-serif';
+  g.fillText("고철 " + run.scrap, L0, p.weapon !== "wrench" ? T + 80 : T + 64);
   if (p.weapon !== "wrench") {
     const gy = T + 60, gf = p.weapon === "rivet" ? clamp(p.heat / 100, 0, 1) : clamp(p.fuel / 100, 0, 1);
     g.textAlign = "left"; g.font = '600 11px "IBM Plex Sans KR", sans-serif';
@@ -668,18 +675,21 @@ function newPlayer() {
     wrench: null, specCd: 0,
     z: 0, vz: 0, air: false, slam: null, slamCd: 0, squash: 0, mark: null,
     mods: {}, wups: {}, st: null, walk: 0, moving: false, hpLag: 100, lagT: 0, healGlow: 0,
+    battery: true,
     weapon: weaponId, lock: null, bloom: 0, heat: 0, overheat: 0, fuel: 100, fuelLock: false, fireT: 9, shotT: 0, flaming: false, tickT: 0, firing: false, aimAng: Math.PI / 2, flameSnd: 0, pullT: 0, atkCount: 0, flashT: 0,
   };
 }
 
 const ZONE_ROOMS = 7; // 1~5 전투, 6 충전소, 7 보스
 function roomKind(n) { return n <= 5 ? "combat" : n === 6 ? "station" : "boss"; }
+// 방 6은 판마다 충전소 또는 부품 상점
+function specialKind() { return mulberry32(hashStr(runSeed + "#special"))() < 0.5 ? "station" : "shop"; }
 function genDoors(n) {
   const r = mulberry32(hashStr(runSeed + "#doors#" + n));
-  if (n === 5) return [{ type: "station" }];
+  if (n === 5) return [{ type: specialKind() }];
   if (n === 6) return [{ type: "boss" }];
   const count = r() < 0.4 ? 3 : 2;
-  const pool = ["module", "module", "module", "heal", "weapon", "chip"];
+  const pool = ["module", "module", "module", "heal", "weapon", "chip", "scrap"];
   const types = ["module"];
   let guard = 0;
   while (types.length < count && guard++ < 50) { const t = pool[Math.floor(r() * pool.length)]; if (!types.includes(t)) types.push(t); }
@@ -709,7 +719,7 @@ function genRoom(n, reward) {
   }
   for (let i = 0; i < 7; i++) decals.push({ x: RX0 + mapRng() * (RX1 - RX0), y: RY0 + mapRng() * (RY1 - RY0), r: 14 + mapRng() * 34, a: 0.05 + mapRng() * 0.07 });
   const rm = { n, kind, reward, doors, obstacles, decals, cracks: [], wave: 0, waves: kind === "combat" ? 3 : 0, delay: 1.3, cleared: false, doorOpen: false, pickup: null, tookDamage: false, doorPulse: 0 };
-  if (kind === "station") { rm.cleared = true; rm.pickup = { x: W / 2, y: (RY0 + RY1) / 2 - 20, type: "station", t: 0 }; }
+  if (kind === "station") { rm.cleared = true; rm.pickup = { x: W / 2, y: (RY0 + RY1) / 2 - 20, type: specialKind(), t: 0 }; }
   return rm;
 }
 function spawnPickup() {
@@ -736,7 +746,7 @@ function startRun() {
   player = newPlayer();
   recalcStats();
   enemies = []; bolts = []; pending = []; particles = []; texts = []; afterimages = []; waves = []; zaps = []; shots = []; fires = []; releaseAllTouches();
-  run = { score: 0, kills: 0, time: 0, cause: "", won: false, char: charId, weapon: weaponId };
+  run = { score: 0, kills: 0, time: 0, cause: "", won: false, char: charId, weapon: weaponId, scrap: 0, batteryUsed: false };
   room = genRoom(1, "module");
   hitstop = 0; shakeAmt = 0; hurtFlash = 0;
   showBanner("1구역 · 폐기장", "방을 정리하면 강화 모듈을 얻어요");
@@ -746,11 +756,11 @@ function startRun() {
 function enterDoor(d) {
   if (d.type === "boss") { winZone(); return; }
   const n = room.n + 1;
-  room = genRoom(n, d.type === "station" ? null : d.type);
+  room = genRoom(n, d.type === "station" || d.type === "shop" ? null : d.type);
   player.x = W / 2; player.y = RY1 - 50; player.kx = player.ky = 0; player.z = 0; player.air = false; player.slam = null;
   bolts = []; pending = []; afterimages = []; waves = []; zaps = []; shots = []; fires = [];
   if (player.wrench) { player.wrench = null; player.specCd = 0; }
-  if (room.kind === "station") showBanner("방 " + n + " · 충전소", "충전 장치를 사용하세요");
+  if (room.kind === "station") showBanner("방 " + n + " · " + REWARD[specialKind()].name, specialKind() === "shop" ? "고철로 부품을 살 수 있어요" : "충전 장치를 사용하세요");
   else showBanner("방 " + n + " / " + ZONE_ROOMS, "보상: " + REWARD[room.reward].name);
 }
 function winZone() {
@@ -841,6 +851,7 @@ function killEnemy(e) {
   run.kills++;
   const pts = e.type === "turret" ? 15 : 10;
   run.score += pts;
+  gainScrap(e.type === "turret" ? 3 : 2, e.x, e.y, true);
   burst(e.x, e.y, 22, "#ffb347", 300, 0.45, 3);
   debris(e.x, e.y, 9, e.type === "turret" ? C.turret : C.spark);
   addText(e.x, e.y - 22, "+" + pts, C.good, false);
@@ -857,6 +868,18 @@ function hurtPlayer(dmg, from, cause) {
   addText(p.x, p.y - 26, "-" + dmg, C.danger, true);
   burst(p.x, p.y, 12, C.danger, 260, 0.35, 2.6);
   hitstop = Math.max(hitstop, 0.09); shake(10); sfx("hurt");
+  if (p.hp <= 0 && p.battery) {
+    // 예비 배터리: 한 판에 한 번 부활
+    p.battery = false; run.batteryUsed = true;
+    p.hp = Math.round(p.maxHp * 0.3); p.hpLag = p.hp; p.inv = 2;
+    for (const e of enemies) { if (e.dead || e.type === "turret") continue; const d = dist(p, e); if (d < 150) { const a = angTo(p, e); e.vx += Math.cos(a) * 650; e.vy += Math.sin(a) * 650; } }
+    bolts.forEach((b) => { if (dist(p, b) < 150) b.dead = true; });
+    waves.push({ x: p.x, y: p.y, t: 0, max: 0.5, R: 150, col: C.visor });
+    burst(p.x, p.y, 30, C.visor, 320, 0.6, 3);
+    showBanner("예비 배터리 작동", "체력 30%로 재가동 · 2초 무적"); banner.t = 1.6;
+    hitstop = 0.15; shake(10); sfx("revive"); buzz(80);
+    return;
+  }
   if (p.hp <= 0) {
     p.hp = 0; p.dead = true; p.deathT = 1.4; run.cause = cause;
     burst(p.x, p.y, 40, "#ffb347", 380, 0.7, 3.5); debris(p.x, p.y, 16, C.body);
@@ -978,6 +1001,8 @@ const REWARD = {
   weapon: { name: "무기 개조", color: "#f2c230" },
   chip:   { name: "강화 칩", color: "#5aa9ff" },
   station:{ name: "충전소", color: "#59e39a" },
+  shop:   { name: "부품 상점", color: "#f2c230" },
+  scrap:  { name: "고철 더미", color: "#c9a26a" },
   boss:   { name: "보스", color: "#ff4b3a" },
 };
 function rewardRng(kind) { return mulberry32(hashStr(runSeed + "#" + kind + "#" + room.n)); }
@@ -1598,6 +1623,7 @@ function update(dt) {
       else {
         room.cleared = true;
         let bonus = 100; run.score += 100;
+        gainScrap(room.tookDamage ? 10 : 15, p.x, p.y);
         if (!room.tookDamage) { run.score += 50; bonus += 50; }
         showBanner("방 클리어 +" + bonus, (room.tookDamage ? "" : "무피격 보너스 +50 · ") + "보상을 획득하세요");
         spawnPickup();
@@ -1659,23 +1685,26 @@ function openChoice(title, sub, opts) {
     if (o.line) { const l = document.createElement("span"); l.className = "opt-line"; l.textContent = o.line; b.append(l); }
     const d = document.createElement("span"); d.className = "opt-desc"; d.textContent = o.desc; b.append(d);
     if (o.note) { const n = document.createElement("span"); n.className = "opt-note"; n.textContent = o.note; b.append(n); }
+    if (o.price !== undefined) { const pr = document.createElement("span"); pr.className = "opt-price"; pr.textContent = o.sold ? "판매됨" : "고철 " + o.price; b.append(pr); }
     const k = document.createElement("kbd"); k.textContent = i + 1; b.append(k);
     b.addEventListener("click", () => choose(i));
     box.append(b);
   });
   state = "choice";
   $("ovChoice").hidden = false;
+  $("chFoot").hidden = true;
   releaseAllTouches(); keys.clear(); input.mouseL = false;
   const first = box.querySelector("button:not([disabled])"); if (first) first.focus({ preventScroll: true });
 }
 function choose(i) {
   const o = choiceOpts[i];
   if (!o || o.disabled || state !== "choice") return;
+  if (o.keep) { sfx("choose"); o.apply(); openShop(); return; }
   $("ovChoice").hidden = true;
   state = "play";
   sfx("choose");
   o.apply();
-  if (state !== "choice") openDoors();
+  if (state !== "choice") { if (room.shopActive) openShop(); else openDoors(); }
 }
 function modOption(id, r, extra) {
   const m = MODS[id], cur = player.mods[m.slot];
@@ -1731,9 +1760,59 @@ function offerStation() {
     { title: "무기 개조", color: C.hazard, desc: "렌치 개조 하나를 골라요", apply: () => offerWeapon() },
   ]);
 }
+
+// ================= 부품 상점 =================
+const PRICE = { mod: [70, 110, 160], weapon: 80, chip: 90, heal: 40, reroll: 30 };
+let shopItems = [], shopRerolls = 0;
+function buildShop() {
+  const r = rewardRng("shop" + shopRerolls), p = player, items = [];
+  const ids = shuffleWith(r, Object.keys(MODS).filter((id) => !(p.mods[MODS[id].slot] && p.mods[MODS[id].slot].id === id)));
+  for (const id of ids.slice(0, 2)) { const x = r(); const rar = x < 0.15 ? 2 : x < 0.5 ? 1 : 0; items.push({ kind: "mod", id, r: rar, price: PRICE.mod[rar] }); }
+  items.push({ kind: "weapon", key: shuffleWith(r, Object.keys(WUPS))[0], price: PRICE.weapon });
+  items.push({ kind: "chip", price: PRICE.chip });
+  items.push({ kind: "heal", price: PRICE.heal });
+  shopItems = items;
+}
+function openShop() {
+  const p = player;
+  const opts = shopItems.map((it) => {
+    let o;
+    if (it.kind === "mod") o = modOption(it.id, it.r);
+    else if (it.kind === "weapon") o = { title: WUPS[it.key].name, tag: p.wups[it.key] ? "×" + (p.wups[it.key] + 1) : "", color: C.hazard, line: "무기 개조", desc: WUPS[it.key].d, apply: () => { p.wups[it.key] = (p.wups[it.key] || 0) + 1; recalcStats(); addText(p.x, p.y - 30, WUPS[it.key].name, C.hazard, true); } };
+    else if (it.kind === "chip") o = { title: "강화 칩", color: "#5aa9ff", line: "모듈 등급업", desc: "장착한 모듈 하나의 등급을 올려요", apply: () => offerChip() };
+    else o = { title: "수리 키트", color: C.good, line: "회복", desc: "체력 30 회복", apply: () => { p.hp = Math.min(p.maxHp, p.hp + 30); addText(p.x, p.y - 30, "+30", C.good, true); } };
+    const noUse = it.kind === "chip" && !upgradable().length;
+    const full = it.kind === "heal" && p.hp >= p.maxHp;
+    o.price = it.price; o.sold = it.sold;
+    o.disabled = it.sold || run.scrap < it.price || noUse || full;
+    o.note = it.sold ? "구매 완료" : noUse ? "강화할 모듈이 없어요" : full ? "체력이 가득 차 있어요" : o.note;
+    const buy = o.apply;
+    o.apply = () => { run.scrap -= it.price; it.sold = true; sfx("pickup"); buy(); };
+    o.keep = it.kind !== "chip";
+    return o;
+  });
+  openChoice("부품 상점", "고철 " + run.scrap + "개 보유 · 여러 개 살 수 있어요", opts);
+  const foot = $("chFoot"); foot.hidden = false;
+  $("btnReroll").textContent = "진열 바꾸기 (고철 " + PRICE.reroll + ")";
+  $("btnReroll").disabled = run.scrap < PRICE.reroll;
+}
+function closeShop() {
+  room.shopActive = false;
+  $("chFoot").hidden = true;
+  $("ovChoice").hidden = true;
+  state = "play";
+  openDoors();
+}
+function gainScrap(n, x, y, quiet) {
+  run.scrap += n;
+  if (!quiet) addText(x, y - 34, "고철 +" + n, "#e0bf86", true);
+  else if (Math.random() < 0.6) particles.push({ x, y, z: 20, vz: 160, vx: rand(-40, 40), vy: rand(-40, 40), life: 0.6, max: 0.6, color: "#c9a26a", size: 3.5, rot: 0, vr: 8, glow: false, square: true });
+}
 function takePickup(type) {
   const p = player;
   sfx("pickup"); burst(p.x, p.y, 16, REWARD[type].color, 200, 0.45, 2.4);
+  if (type === "scrap") { gainScrap(40 + Math.floor(rewardRng("scrap")() * 21), p.x, p.y); openDoors(); return; }
+  if (type === "shop") { room.shopActive = true; shopRerolls = 0; buildShop(); openShop(); return; }
   if (type === "heal") { const h = 30; p.hp = Math.min(p.maxHp, p.hp + h); addText(p.x, p.y - 30, "+" + h, C.good, true); openDoors(); }
   else if (type === "module") offerModules();
   else if (type === "weapon") offerWeapon();
@@ -1746,7 +1825,7 @@ function die() { state = "dead"; showResult(false); }
 function buildText() {
   const p = player;
   const mods = SLOT_ORDER.map((sl) => p.mods[sl]).filter(Boolean).map((m) => MODS[m.id].name + (m.r ? "(" + RARITY[m.r].name + ")" : ""));
-  return CHARS[run.char || charId].name + " · " + WEAPONS[run.weapon || weaponId].name + " · " + (mods.length ? "장착 모듈: " + mods.join(", ") : "장착 모듈 없음");
+  return CHARS[run.char || charId].name + " · " + WEAPONS[run.weapon || weaponId].name + " · 고철 " + run.scrap + " · 예비 배터리 " + (run.batteryUsed ? "사용" : "미사용") + " · " + (mods.length ? "장착 모듈: " + mods.join(", ") : "장착 모듈 없음");
 }
 function showResult(won) {
   $("stRoom").textContent = (won ? ZONE_ROOMS : room.n) + " / " + ZONE_ROOMS;
@@ -2104,6 +2183,10 @@ function drawIcon(type, x, y, s) {
   if (type === "module") {
     ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + Math.PI / 6; ctx.lineTo(Math.cos(a) * 9 * k, Math.sin(a) * 9 * k); } ctx.closePath(); ctx.stroke();
     ctx.beginPath(); ctx.arc(0, 0, 3.5 * k, 0, Math.PI * 2); ctx.fill();
+  } else if (type === "shop" || type === "scrap") {
+    ctx.beginPath(); for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, rr = (i % 2 ? 6 : 9) * k; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(10,12,14,0.85)"; ctx.beginPath(); ctx.arc(0, 0, 3 * k, 0, Math.PI * 2); ctx.fill();
+    if (type === "shop") { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-11 * k, 12 * k); ctx.lineTo(11 * k, 12 * k); ctx.stroke(); }
   } else if (type === "heal" || type === "station") {
     ctx.fillRect(-2.5 * k, -8 * k, 5 * k, 16 * k); ctx.fillRect(-8 * k, -2.5 * k, 16 * k, 5 * k);
   } else if (type === "weapon") {
@@ -2471,17 +2554,28 @@ function cooldowns() {
     slam: p.slamCd <= 0 ? 1 : 1 - p.slamCd / p.st.slamCd,
   };
 }
+function drawBattery(g, x, y, on) {
+  g.save();
+  g.strokeStyle = on ? C.visor : "#4a525b"; g.lineWidth = 1.5;
+  g.strokeRect(x + 0.5, y + 0.5, 18, 11); g.fillStyle = on ? C.visor : "#4a525b"; g.fillRect(x + 19, y + 3.5, 2, 5);
+  if (on) { g.fillRect(x + 3, y + 3, 13, 6); } else { g.beginPath(); g.moveTo(x + 4, y + 2); g.lineTo(x + 15, y + 10); g.stroke(); }
+  g.restore();
+}
 function drawHud() {
   if (UI.mode === "panel") return;
   const p = player;
   ctx.font = '700 12px "IBM Plex Mono", "IBM Plex Sans KR", monospace'; ctx.textBaseline = "middle"; ctx.textAlign = "left";
   // 체력
-  ctx.fillStyle = "rgba(10,12,14,0.75)"; ctx.fillRect(12, 8, 270, 26);
+  ctx.fillStyle = "rgba(10,12,14,0.75)"; ctx.fillRect(12, 8, 300, 26);
   ctx.fillStyle = C.visor; ctx.fillText("B-07", 20, 21);
   ctx.fillStyle = "#2b1a18"; ctx.fillRect(60, 14, 150, 14);
   ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.fillRect(60, 14, 150 * clamp(p.hpLag / p.maxHp, 0, 1), 14);
   ctx.fillStyle = hpColor(p.hp / p.maxHp); ctx.fillRect(60, 14, 150 * clamp(p.hp / p.maxHp, 0, 1), 14);
   ctx.fillStyle = C.text; ctx.fillText(Math.ceil(p.hp) + "/" + p.maxHp, 216, 21);
+  drawBattery(ctx, 290, 14, p.battery);
+  ctx.textAlign = "left"; ctx.fillStyle = "rgba(10,12,14,0.75)"; ctx.fillRect(188, 38, 94, 22);
+  ctx.fillStyle = "#e0bf86"; ctx.font = '700 12px "IBM Plex Sans KR", monospace'; ctx.fillText("고철 " + run.scrap, 196, 49.5);
+  ctx.font = '700 12px "IBM Plex Mono", "IBM Plex Sans KR", monospace';
   // 우측 정보
   ctx.textAlign = "right";
   ctx.fillStyle = "rgba(10,12,14,0.75)"; ctx.fillRect(W - 302, 8, 290, 26);
@@ -2640,7 +2734,7 @@ function frame(now) {
 }
 
 room = genRoom(1, "module");
-player = newPlayer(); recalcStats(); enemies = []; bolts = []; pending = []; particles = []; texts = []; afterimages = []; run = { score: 0, kills: 0, time: 0 };
+player = newPlayer(); recalcStats(); enemies = []; bolts = []; pending = []; particles = []; texts = []; afterimages = []; run = { score: 0, kills: 0, time: 0, scrap: 0 };
 fitCanvas();
 requestAnimationFrame(frame);
 
@@ -2653,6 +2747,8 @@ $("btnChar").addEventListener("click", goHome);
 initPicker();
 initWeaponPicker();
 $("btnResume").addEventListener("click", resume);
+$("btnLeave").addEventListener("click", () => { if (state === "choice" && room.shopActive) { sfx("choose"); closeShop(); } });
+$("btnReroll").addEventListener("click", () => { if (state === "choice" && room.shopActive && run.scrap >= PRICE.reroll) { run.scrap -= PRICE.reroll; shopRerolls++; buildShop(); sfx("pickup"); openShop(); } });
 $("btnHome").addEventListener("click", goHome);
 })();
 </script>
