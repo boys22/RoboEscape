@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.4)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.4.1)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -141,7 +141,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.4</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.4.1</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -175,7 +175,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
         </dl>
         <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button></div>
         <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
-        <p class="ver">버전 b0.4</p>
+        <p class="ver">버전 b0.4.1</p>
       </div>
     </div>
 
@@ -318,6 +318,7 @@ function sfx(n) {
     case "ignite": noise(0.3, 0.15, "lowpass", 1800, 300); tone("sine", 160, 80, 0.25, 0.08); break;
     case "overheat": tone("sawtooth", 320, 140, 0.35, 0.09); noise(0.3, 0.08, "highpass", 2000, 600); break;
     case "revive": tone("sine", 200, 900, 0.5, 0.12); tone("triangle", 400, 1600, 0.4, 0.06, 0.1); break;
+    case "heal": tone("sine", 660, 990, 0.1, 0.05); break;
     case "land": tone("sine", 140, 45, 0.14, 0.14); noise(0.1, 0.08, "lowpass", 900, 150); break;
   }
 }
@@ -741,7 +742,16 @@ function spawnPickup() {
 function openDoors() {
   room.doorOpen = true;
   sfx("door");
-  showBanner("출구 개방", room.doors.length > 1 ? "문 앞에 표시된 다음 보상을 보고 고르세요" : "다음 방으로 이동하세요");
+  // 위기 보정: 체력 50% 이하면 다음 출구 중 하나를 수리 키트 문으로
+  let pity = false;
+  if (player.hp <= player.maxHp * 0.5 && room.n <= 4 && !room.doors.some((d) => d.type === "heal")) {
+    let cands = room.doors.filter((d) => d.type !== "module" && d.type !== "challenge");
+    if (!cands.length) cands = room.doors.filter((d) => d.type !== "module");
+    if (!cands.length) cands = room.doors;
+    const d = cands[Math.floor(Math.random() * cands.length)];
+    d.type = "heal"; d.pity = true; pity = true;
+  }
+  showBanner("출구 개방", pity ? "체력이 낮아 수리 키트 문이 열렸어요" : room.doors.length > 1 ? "문 앞에 표시된 다음 보상을 보고 고르세요" : "다음 방으로 이동하세요");
 }
 
 function startRun() {
@@ -749,7 +759,7 @@ function startRun() {
   newSeed();
   player = newPlayer();
   recalcStats();
-  enemies = []; bolts = []; pending = []; particles = []; texts = []; afterimages = []; waves = []; zaps = []; shots = []; fires = []; releaseAllTouches();
+  enemies = []; bolts = []; pending = []; particles = []; texts = []; afterimages = []; waves = []; zaps = []; shots = []; fires = []; healDrops = []; releaseAllTouches();
   run = { score: 0, kills: 0, time: 0, cause: "", won: false, char: charId, weapon: weaponId, scrap: 0, batteryUsed: false };
   room = genRoom(1, "module");
   hitstop = 0; shakeAmt = 0; hurtFlash = 0;
@@ -762,7 +772,7 @@ function enterDoor(d) {
   const n = room.n + 1;
   room = genRoom(n, d.type === "station" || d.type === "shop" ? null : d.type);
   player.x = W / 2; player.y = RY1 - 50; player.kx = player.ky = 0; player.z = 0; player.air = false; player.slam = null;
-  bolts = []; pending = []; afterimages = []; waves = []; zaps = []; shots = []; fires = [];
+  bolts = []; pending = []; afterimages = []; waves = []; zaps = []; shots = []; fires = []; healDrops = [];
   if (player.wrench) { player.wrench = null; player.specCd = 0; }
   if (room.kind === "station") showBanner("방 " + n + " · " + REWARD[specialKind()].name, specialKind() === "shop" ? "고철로 부품을 살 수 있어요" : "충전 장치를 사용하세요");
   else if (room.challenge) showBanner("방 " + n + " · 긴급 생산 라인", "30초 버티면 보상 2개 + 고철 60");
@@ -779,7 +789,7 @@ function goHome() {
   state = "title";
   $("ovPause").hidden = true; $("ovDead").hidden = true; $("ovChoice").hidden = true; $("ovTitle").hidden = false;
   releaseAllTouches(); keys.clear();
-  enemies = []; bolts = []; pending = []; shots = []; fires = []; particles = []; texts = []; banner = null;
+  enemies = []; bolts = []; pending = []; shots = []; fires = []; healDrops = []; particles = []; texts = []; banner = null;
   newSeed(); room = genRoom(1, "module"); player = newPlayer(); recalcStats();
   $("btnStart").focus();
 }
@@ -865,6 +875,7 @@ function killEnemy(e) {
   burst(e.x, e.y, 22, "#ffb347", 300, 0.45, 3);
   debris(e.x, e.y, 9, e.type === "turret" ? C.turret : C.spark);
   addText(e.x, e.y - 22, "+" + pts, C.good, false);
+  if (Math.random() < 0.1) { const a = Math.random() * Math.PI * 2; healDrops.push({ x: e.x, y: e.y, z: 20, vz: 220, vx: Math.cos(a) * 60, vy: Math.sin(a) * 60, t: 8 }); }
   if (has("mag_passive")) { const h = mval("mag_passive"); player.hp = Math.min(player.maxHp, player.hp + h); addText(player.x, player.y - 20, "+" + h, C.good, false); }
   shake(6); sfx("explode");
 }
@@ -1459,6 +1470,41 @@ function updateChallenge(dt) {
   }
 }
 
+// ================= 수리 부품 드롭 =================
+let healDrops = [];
+const DROP_HEAL = 5;
+function updateDrops(dt) {
+  const p = player;
+  for (const d of healDrops) {
+    d.t -= dt;
+    d.x += d.vx * dt; d.y += d.vy * dt; d.vx *= 1 - Math.min(1, dt * 3); d.vy *= 1 - Math.min(1, dt * 3);
+    d.vz -= 900 * dt; d.z += d.vz * dt;
+    if (d.z < 6) { d.z = 6; d.vz = Math.abs(d.vz) > 60 ? -d.vz * 0.4 : 0; }
+    d.x = clamp(d.x, RX0 + 10, RX1 - 10); d.y = clamp(d.y, RY0 + 10, RY1 - 10);
+    if (p.dead || p.hp >= p.maxHp) continue;
+    const dd = dist(p, d);
+    if (dd < 80) { const a = angTo(d, p), sp = 340 * (1 - dd / 100) + 120; d.x += Math.cos(a) * sp * dt; d.y += Math.sin(a) * sp * dt; }
+    if (dd < 18) {
+      d.t = 0;
+      p.hp = Math.min(p.maxHp, p.hp + DROP_HEAL);
+      addText(p.x, p.y - 30, "+" + DROP_HEAL, C.good, false);
+      burst(p.x, p.y, 6, C.good, 120, 0.3, 2);
+      sfx("heal");
+    }
+  }
+  healDrops = healDrops.filter((d) => d.t > 0);
+}
+function drawDrop(d) {
+  if (d.t < 2 && Math.floor(d.t * 8) % 2 === 0) return;
+  const bob = Math.sin(performance.now() / 200 + d.x) * 2;
+  floorEllipse(d.x, d.y, 6, 4, "rgba(0,0,0,0.35)");
+  const X = d.x, Y = syf(d.y, d.z + bob);
+  const g = ctx.createRadialGradient(X, Y, 1, X, Y, 14); g.addColorStop(0, "rgba(89,227,154,0.55)"); g.addColorStop(1, "rgba(89,227,154,0)");
+  ctx.fillStyle = g; ctx.fillRect(X - 14, Y - 14, 28, 28);
+  ctx.fillStyle = "#e8fff2"; ctx.fillRect(X - 5, Y - 5, 10, 10);
+  ctx.fillStyle = C.good; ctx.fillRect(X - 1.5, Y - 4, 3, 8); ctx.fillRect(X - 4, Y - 1.5, 8, 3);
+}
+
 // ================= 업데이트 =================
 function update(dt) {
   const p = player;
@@ -1615,6 +1661,7 @@ function update(dt) {
     }
   }
   updateShots(dt);
+  updateDrops(dt);
   input.atkP = input.jumpP = input.throwP = input.dashP = false;
 
   // --- 대기 중 스폰 ---
@@ -2780,6 +2827,7 @@ function render() {
   if (room.pickup) list.push({ k: room.pickup.y, f: () => drawPickup(room.pickup) });
   for (const b of bolts) list.push({ k: b.y, f: () => drawBolt(b) });
   for (const sh of shots) list.push({ k: sh.y, f: () => drawShot(sh) });
+  for (const hd of healDrops) list.push({ k: hd.y, f: () => drawDrop(hd) });
   list.sort((a, b) => a.k - b.k);
   for (const it of list) it.f();
   // 상자 뒤에 가려진 로봇 윤곽
