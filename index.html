@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.5.0)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.5.1)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -143,7 +143,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.5.0</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.5.1</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -177,7 +177,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
         </dl>
         <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button><button class="btn ghost test" id="btnBoss" type="button">보스전 테스트</button></div>
         <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
-        <p class="ver">버전 b0.5.0</p>
+        <p class="ver">버전 b0.5.1</p>
       </div>
     </div>
 
@@ -806,7 +806,7 @@ function resume() { state = "play"; $("ovPause").hidden = true; initAudio(); }
 function showBanner(title, sub) { banner = { title, sub, t: 2.2 }; }
 
 // ================= 1구역 보스: 파쇄기 그라인더 G-01 =================
-const BOSS = { hp: 900, r: 50, walk: 55, chargeSp: 560, chargeSp2: 680, wind: 0.9, wind2: 0.6, wind2b: 0.45, stun: 2, stun2: 1.6, chargeDmg: 25, scrapDmg: 12, suckT: 3, suckF: 150, rollerDmg: 20, oilDmg: 8 };
+const BOSS = { hp: 1200, p2At: 0.6, stunMul: 1.3, stunCrate: 1.8, stunWall: 1.2, brakePast: 20, slide: 80, brakeT: 0.28, r: 50, walk: 55, chargeSp: 560, chargeSp2: 680, wind: 0.9, wind2: 0.6, wind2b: 0.45, chargeDmg: 25, scrapDmg: 12, suckT: 3, suckF: 150, rollerDmg: 20, oilDmg: 8 };
 let oils = [];
 function makeBoss(x, y) {
   return { type: "boss", x, y, r: BOSS.r, hp: BOSS.hp, maxHp: BOSS.hp, vx: 0, vy: 0, flash: 0, state: "move", t: 1.3, tMax: 1, aim: Math.PI / 2, last: "", p2: false, roll: 0, chargeLen: 0, charges: 0, volleys: 0, hitPlayer: false, oilD: 0, hpLag: BOSS.hp, lagT: 0, rollHit: 0 };
@@ -823,11 +823,23 @@ function bossChargeLen(e) {
   return d;
 }
 function bossToMove(e) { e.state = "move"; e.t = e.p2 ? rand(0.7, 1.2) : rand(1.1, 1.8); }
-function bossWindup(e, t) { e.state = "windup"; e.t = t; e.tMax = t; e.aim = angTo(e, player); e.chargeLen = bossChargeLen(e); sfx("windup"); }
+// 돌진 경로: 플레이어를 조금 지나친 곳에서 브레이크. 벽·상자가 그보다 가까우면 그대로 박음
+function bossAimPath(e) {
+  const p = player, cx = Math.cos(e.aim), cy = Math.sin(e.aim);
+  e.chargeLen = bossChargeLen(e);
+  const proj = (p.x - e.x) * cx + (p.y - e.y) * cy;
+  e.brakeAt = Math.max(100, proj + BOSS.brakePast);
+  e.willCrash = e.brakeAt + BOSS.slide >= e.chargeLen - 6;
+}
+function bossWindup(e, t) { e.state = "windup"; e.t = t; e.tMax = t; e.aim = angTo(e, player); bossAimPath(e); sfx("windup"); }
+const BOSS_W = { charge: 0.35, spit: 0.4, suck: 0.25 };
 function bossNext(e) {
-  const r = Math.random();
-  let pick = !e.last ? "charge" : r < 0.45 ? "charge" : r < 0.8 ? "spit" : "suck";
-  if (pick === e.last && pick !== "charge") pick = "charge";
+  let pick = "charge";
+  if (e.last) {
+    const pool = Object.keys(BOSS_W).filter((k) => k !== e.last), tot = pool.reduce((a, k) => a + BOSS_W[k], 0);
+    let r = Math.random() * tot; pick = pool[pool.length - 1];
+    for (const k of pool) { r -= BOSS_W[k]; if (r <= 0) { pick = k; break; } }
+  }
   e.last = pick;
   if (pick === "charge") { e.charges = e.p2 ? 2 : 1; bossWindup(e, e.p2 ? BOSS.wind2 : BOSS.wind); }
   else if (pick === "spit") { e.state = "spitWind"; e.t = 0.75; e.tMax = 0.75; e.volleys = e.p2 ? 2 : 1; sfx("windup"); }
@@ -861,9 +873,22 @@ function bossEnrage(e) {
   hitstop = Math.max(hitstop, 0.12); shake(16); sfx("roar"); buzz(60);
   bossSummon(e, 2);
 }
+function bossChargeEnd(e) {
+  if (e.charges > 1) { e.charges--; bossWindup(e, BOSS.wind2b); }
+  else if (e.p2) { e.state = "spitWind"; e.t = 0.35; e.tMax = 0.35; e.volleys = 1; sfx("windup"); } // 2페이즈 연계: 돌진 직후 고철 뿜기
+  else { e.state = "recover"; e.t = 0.6; }
+}
 function bossCrash(e) {
+  const cx = Math.cos(e.aim), cy = Math.sin(e.aim);
+  const crate = room.obstacles.find((o) => circRect(e.x + cx * 4, e.y + cy * 4, e.r + 2, o));
+  if (crate) {
+    room.obstacles = room.obstacles.filter((o) => o !== crate);
+    const ox = crate.x + crate.w / 2, oy = crate.y + crate.h / 2;
+    debris(ox, oy, 16, C.crateHi); debris(ox, oy, 8, C.crate); burst(ox, oy, 18, "#e0bf86", 280, 0.45, 3);
+    addText(ox, oy - 30, "상자 파괴", "#e0bf86", false);
+  }
   if (e.p2 && e.charges > 1) { e.charges--; shake(10); sfx("clank"); burst(e.x, e.y, 14, C.eye, 260, 0.35, 2.6); bossWindup(e, BOSS.wind2b); return; }
-  e.state = "stun"; e.t = e.p2 ? BOSS.stun2 : BOSS.stun; e.tMax = e.t;
+  e.state = "stun"; e.t = crate ? BOSS.stunCrate : BOSS.stunWall; e.tMax = e.t;
   burst(e.x + Math.cos(e.aim) * e.r, e.y + Math.sin(e.aim) * e.r, 22, C.eye, 320, 0.45, 3);
   debris(e.x + Math.cos(e.aim) * e.r, e.y + Math.sin(e.aim) * e.r, 10, "#6b7380");
   room.cracks.push({ x: e.x + Math.cos(e.aim) * e.r * 0.8, y: e.y + Math.sin(e.aim) * e.r * 0.8, seed: Math.random() * 10 });
@@ -872,22 +897,30 @@ function bossCrash(e) {
 }
 function updateBoss(e, dt) {
   const p = player, ap = angTo(e, p), dp = dist(e, p);
-  e.roll += dt * (e.state === "charge" ? 3.2 : e.state === "suck" ? 4 : e.state === "stun" ? 0 : 0.6);
-  if (!e.p2 && e.hp <= e.maxHp * 0.5 && e.state !== "charge" && e.state !== "windup") { bossEnrage(e); return; }
+  e.roll += dt * (e.state === "charge" || e.state === "brake" ? 3.2 : e.state === "suck" ? 4 : e.state === "stun" ? 0 : 0.6);
+  if (!e.p2 && e.hp <= e.maxHp * BOSS.p2At && e.state !== "charge" && e.state !== "windup" && e.state !== "brake") { bossEnrage(e); return; }
   e.t -= dt;
   if (e.state === "move") {
     if (!p.dead && dp > e.r + p.r + 40) { const sp = BOSS.walk * (e.p2 ? 1.3 : 1) * (1 - 0.08 * (e.chillS || 0)); e.x += Math.cos(ap) * sp * dt; e.y += Math.sin(ap) * sp * dt; }
     if (e.t <= 0 && !p.dead) bossNext(e);
   } else if (e.state === "windup") {
-    if (e.t > e.tMax * 0.3 && !p.dead) { e.aim += clamp(angDiff(e.aim, ap), -2.6 * dt, 2.6 * dt); e.chargeLen = bossChargeLen(e); }
-    if (e.t <= 0) { e.state = "charge"; e.t = 1.8; e.hitPlayer = false; e.oilD = 0; sfx("grind"); }
+    if (e.t > e.tMax * 0.3 && !p.dead) { e.aim += clamp(angDiff(e.aim, ap), -2.6 * dt, 2.6 * dt); bossAimPath(e); }
+    if (e.t <= 0) { e.state = "charge"; e.t = 1.8; e.trav = 0; e.hitPlayer = false; e.oilD = 0; sfx("grind"); }
   } else if (e.state === "charge") {
     const sp = e.p2 ? BOSS.chargeSp2 : BOSS.chargeSp, cx = Math.cos(e.aim), cy = Math.sin(e.aim);
     e.x += cx * sp * dt; e.y += cy * sp * dt;
     if (Math.random() < 0.7) particles.push({ x: e.x - cx * e.r + rand(-30, 30), y: e.y - cy * e.r + rand(-20, 20), z: 4, vz: rand(40, 120), vx: -cx * 80, vy: -cy * 80, life: 0.35, max: 0.35, color: "#6b6f74", size: rand(3, 5), glow: false, nograv: false });
     if (!e.hitPlayer && !p.dead && p.z < 40 && dp < e.r + p.r) { e.hitPlayer = true; hurtPlayer(BOSS.chargeDmg, e, "그라인더의 분쇄 돌진에 깔렸어요"); }
     if (e.p2) { e.oilD += sp * dt; if (e.oilD > 56) { e.oilD = 0; oils.push({ x: e.x - cx * e.r * 0.5, y: e.y - cy * e.r * 0.5, r: 24, t: 4.5, max: 4.5 }); } }
-    if (e.t <= 0) { if (e.charges > 1) { e.charges--; bossWindup(e, BOSS.wind2b); } else { e.state = "recover"; e.t = 0.6; } }
+    e.trav += sp * dt;
+    if (!e.willCrash && e.trav >= e.brakeAt) { e.state = "brake"; e.t = BOSS.brakeT; e.tMax = BOSS.brakeT; e.bv = sp; sfx("dash"); }
+    else if (e.t <= 0) bossChargeEnd(e);
+  } else if (e.state === "brake") {
+    const k = Math.max(0, e.t / e.tMax), v = e.bv * k, cx = Math.cos(e.aim), cy = Math.sin(e.aim);
+    e.x += cx * v * dt; e.y += cy * v * dt;
+    if (Math.random() < 0.8) particles.push({ x: e.x + rand(-40, 40), y: e.y + rand(-10, 20), z: 2, vz: rand(20, 60), vx: -cx * 60 + rand(-30, 30), vy: -cy * 60, life: 0.3, max: 0.3, color: Math.random() < 0.4 ? C.eye : "#6b6f74", size: rand(2, 4), glow: Math.random() < 0.4, nograv: true });
+    if (!e.hitPlayer && !p.dead && p.z < 40 && v > 180 && dp < e.r + p.r) { e.hitPlayer = true; hurtPlayer(BOSS.chargeDmg, e, "그라인더의 분쇄 돌진에 깔렸어요"); }
+    if (e.t <= 0) bossChargeEnd(e);
   } else if (e.state === "spitWind") {
     if (e.t <= 0) { bossSpit(e); e.volleys--; if (e.volleys > 0) { e.t = 0.45; e.tMax = 0.45; } else { e.state = "recover"; e.t = 0.7; } }
   } else if (e.state === "suck") {
@@ -953,11 +986,12 @@ function drawOils() {
 // 보스 바닥 예고
 function drawBossMarks(e) {
   if (e.state === "windup") {
-    const k = 1 - e.t / e.tMax, L = e.chargeLen + e.r;
+    const k = 1 - e.t / e.tMax, L = (e.willCrash ? e.chargeLen : e.brakeAt + BOSS.slide) + e.r;
     ctx.save(); ctx.translate(e.x, syf(e.y)); ctx.scale(1, SY); ctx.rotate(e.aim);
     ctx.globalAlpha = 0.18 + k * 0.32; ctx.fillStyle = C.danger; ctx.fillRect(0, -e.r, L, e.r * 2);
     ctx.globalAlpha = 0.6 + k * 0.4; ctx.strokeStyle = C.danger; ctx.lineWidth = 3; ctx.setLineDash([14, 10]); ctx.strokeRect(0, -e.r, L, e.r * 2); ctx.setLineDash([]);
     ctx.globalAlpha = 0.9; ctx.fillStyle = C.danger; ctx.fillRect(0, -2, L * k, 4);
+    ctx.globalAlpha = 0.95; ctx.fillStyle = e.willCrash ? C.hazard : C.danger; ctx.fillRect(L - (e.willCrash ? 8 : 4), -e.r, e.willCrash ? 8 : 4, e.r * 2);
     ctx.restore();
   } else if (e.state === "spitWind") {
     const k = 1 - e.t / e.tMax, base = angTo(e, player);
@@ -1095,7 +1129,7 @@ function drawBossBar() {
   ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.fillRect(x, y, w * clamp(b.hpLag / b.maxHp, 0, 1), 10);
   ctx.fillStyle = b.p2 ? "#ff7a33" : C.danger; ctx.fillRect(x, y, w * clamp(b.hp / b.maxHp, 0, 1), 10);
   ctx.strokeStyle = C.hazard; ctx.lineWidth = 1.5; ctx.strokeRect(x - 0.5, y - 0.5, w + 1, 11);
-  ctx.fillStyle = C.hazard; ctx.fillRect(x + w / 2 - 1, y - 3, 2, 16);
+  ctx.fillStyle = C.hazard; ctx.fillRect(x + w * BOSS.p2At - 1, y - 3, 2, 16);
   ctx.restore();
 }
 function startBossTest() {
@@ -1155,7 +1189,7 @@ function addText(x, y, str, color, big) { texts.push({ x, y, z: 44, str: String(
 function hurtEnemy(e, dmg, ang, kb, heavy, src = "atk", color) {
   if (e.dead) return;
   const proc = src === "proc" || src === "atkTick" || src === "atkSoft";
-  if (e.state === "stun" || e.frozen > 0) dmg *= 1.5;
+  if (e.state === "stun" || e.frozen > 0) dmg *= e.type === "boss" ? BOSS.stunMul : 1.5;
   if (e.burnS > 0 && player.st.burnBonus) dmg *= 1 + player.st.burnBonus;
   if (e.frozen > 0) { if (hasDuo("hydcool")) dmg *= 1.5; if (hasDuo("superconduct") && color === FAM.volt.color) dmg *= 3; }
   dmg = Math.max(1, Math.round(dmg));
@@ -1390,7 +1424,7 @@ function applyChill(e, stacks) {
 function freeze(e, t) {
   if (e.dead) return;
   if (hasDuo("thermal") && e.burnS > 0) thermalBlast(e);
-  if (e.type === "boss") { t *= 0.35; if (["windup", "charge", "suck", "spitWind"].includes(e.state)) { e.state = "recover"; e.t = 0.3; } }
+  if (e.type === "boss") { t *= 0.35; if (["windup", "charge", "brake", "suck", "spitWind"].includes(e.state)) { e.state = "recover"; e.t = 0.3; } }
   e.frozen = Math.max(e.frozen || 0, t);
   if (e.type === "spark" && (e.state === "charge" || e.state === "windup")) { e.state = "recover"; e.t = 0.2; }
   burst(e.x, e.y, 10, FAM.frost.color, 160, 0.35, 2.2);
