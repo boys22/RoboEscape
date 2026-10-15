@@ -1,6 +1,17 @@
-# RoboEscape (b0.8.1)
+# RoboEscape (b0.8.2)
 
-RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. 브라우저만 있으면 PC와 휴대폰에서 바로 플레이할 수 있어요. 파일은 `index.html` 하나뿐이에요.
+RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. 브라우저만 있으면 PC와 휴대폰에서 바로 플레이할 수 있어요.
+
+## 파일 구성
+
+| 파일 | 역할 |
+|---|---|
+| `index.html` | 화면 구성. `style.css`와 `game.min.js`를 불러와요 |
+| `style.css` | 디자인(색, 배치, 모바일 화면) |
+| `game.min.js` | 실제로 실행되는 게임 코드 (압축본) |
+| `game.js` | 읽기 쉬운 원본 코드. 수정하거나 오류를 찾을 때 봐요 (실행엔 안 쓰여요) |
+
+네 파일은 **항상 같은 폴더**에 있어야 해요. 컴퓨터에서 `index.html`을 더블클릭해도 바로 실행돼요.
 
 ## 조작
 
@@ -26,7 +37,7 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 2. 저장소 이름을 정해요. 예: `RoboEscape`
 3. **Public**을 선택하고 **Create repository**를 눌러요. 무료 계정은 Public이어야 Pages를 쓸 수 있어요.
 4. 저장소 화면에서 **uploading an existing file** 링크(또는 **Add file → Upload files**)를 눌러요.
-5. 이 폴더의 `index.html`, `README.md`, `CHANGELOG.md`를 끌어다 놓고, 메시지에 `b0.8.1`이라고 적은 뒤 **Commit changes**를 눌러요.
+5. 이 폴더의 파일 6개(`index.html`, `style.css`, `game.min.js`, `game.js`, `README.md`, `CHANGELOG.md`)를 모두 끌어다 놓고, 메시지에 `b0.8.2`이라고 적은 뒤 **Commit changes**를 눌러요.
 6. 저장소 **Settings → Pages**로 가서 아래처럼 설정하고 **Save**를 눌러요.
    - Source: **Deploy from a branch**
    - Branch: **main**, 폴더: **/ (root)**
@@ -37,6 +48,10 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
    ```
 
 8. 휴대폰에서 이 주소를 열고 **가로로** 들면 플레이할 수 있어요.
+
+### 새 버전으로 바꿀 때
+
+새 버전 폴더의 파일을 같은 방식으로 올리면 같은 이름의 파일이 덮어써져요. `index.html`이 `game.min.js?v=버전` 형식으로 불러와서, 휴대폰 브라우저도 예전 파일 대신 새 파일을 받아요.
 
 ### 전체 화면으로 하기
 
@@ -51,7 +66,7 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 
 ### 버전 태그 남기기 (선택)
 
-저장소 오른쪽의 **Releases → Create a new release**에서 태그 이름을 `b0.8.1`로 만들어 두면, 나중에 이 버전으로 되돌아가기 쉬워요.
+저장소 오른쪽의 **Releases → Create a new release**에서 태그 이름을 `b0.8.2`로 만들어 두면, 나중에 이 버전으로 되돌아가기 쉬워요.
 
 ## 참고
 
