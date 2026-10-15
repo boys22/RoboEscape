@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.8.0)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.8.1)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -143,7 +143,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.8.0</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.8.1</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -177,7 +177,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
         </dl>
         <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button><button class="btn ghost test" id="btnBoss" type="button">1구역 보스</button><button class="btn ghost test" id="btnZ2" type="button">2구역</button><button class="btn ghost test" id="btnBoss2" type="button">2구역 보스</button></div>
         <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
-        <p class="ver">버전 b0.8.0</p>
+        <p class="ver">버전 b0.8.1</p>
       </div>
     </div>
 
@@ -1594,11 +1594,11 @@ function startZone2Test() {
 
 // ================= 2구역 보스: 조립 로봇 멀티암 A-02 =================
 const MA = {
-  bodyHp: 700, armHp: 220, r: 46, shield: 0.25, walk: 28, rot: 0.6, aimRot: 3.2,
-  clawWind: 0.8, reach: 230, reachT: 0.25, holdT: 0.35, stuckT: 1.5, grabDmg: 15, wallDmg: 10, throwV: 1500,
-  flameWind: 0.6, flameT: 2, flameTurns: 1.5, flameLen: 150, flameHalf: 0.24, flameDmg: 8,
-  gunWind: 0.5, gunShots: 4, gunGap: 0.14, boltDmg: 8,
-  spinWind: 0.9, spinSp: 520, bounces: 3, spinDmg: 20, dizzy: 2, flip: 6,
+  bodyHp: 1000, armHp: 320, r: 46, shield: 0.25, walk: 28, rot: 0.6, aimRot: 3.2,
+  clawWind: 0.8, reach: 230, reachT: 0.25, holdT: 0.35, stuckT: 1.5, grabDmg: 20, wallDmg: 12, throwV: 1500,
+  flameWind: 0.6, flameT: 2, flameTurns: 1.5, flameLen: 150, flameHalf: 0.24, flameDmg: 12,
+  gunWind: 0.5, gunShots: 4, gunGap: 0.14, boltDmg: 10, combo: 0.4, supVolleys: 3, supGap: 0.35, supWarn: 0.4,
+  spinWind: 0.9, spinSp: 520, bounces: 4, spinDmg: 25, dizzy: 1.4, flip: 6, ring: 8,
 };
 const ARM_DEF = { claw: { off: 0, name: "집게 팔", col: "#f2c230" }, torch: { off: Math.PI * 2 / 3, name: "용접 팔", col: "#ff8a3a" }, gun: { off: Math.PI * 4 / 3, name: "리벳 팔", col: "#c9d0d6" } };
 function makeMultiarm(x, y) {
@@ -1618,7 +1618,24 @@ function maPlaceArms(b) {
 function maArm(b, k) { return b.arms.find((a) => a.kind === k && !a.dead); }
 function maSpd(b) { return 1 + 0.2 * (3 - b.armsAlive); }
 function maAimArm(b, a, dt, rate) { const want = angTo(b, player) - ARM_DEF[a.kind].off; b.rot += clamp(angDiff(b.rot, want), -rate * dt, rate * dt); }
-function maRecover(b, t) { b.state = "recover"; b.t = t; b.act = null; }
+function maRecover(b, t) { b.state = "recover"; b.t = t; b.act = null; b.sup = null; }
+function maSupport(b, dt) {
+  const s = b.sup, g = maArm(b, "gun"), p = player;
+  if (!s || !g || p.dead) { b.sup = null; return; }
+  if (p.grabbed || p.thrownT > 0) return; // 붙잡힌 동안엔 쉬어요
+  s.t -= dt;
+  if (s.t <= 0) {
+    s.warn = false;
+    const base = angTo(g, p);
+    for (const off of [-0.3, 0, 0.3]) { const an = base + off; bolts.push({ x: g.x + Math.cos(an) * 14, y: g.y + Math.sin(an) * 14, vx: Math.cos(an) * 320, vy: Math.sin(an) * 320, r: 5, ang: an, dmg: MA.boltDmg, cause: "멀티암의 리벳에 맞았어요" }); }
+    sfx("shoot"); s.left--; s.t = MA.supGap;
+    if (s.left <= 0) b.sup = null;
+  }
+}
+function maRing(b, off) {
+  for (let i = 0; i < MA.ring; i++) { const an = off + i / MA.ring * Math.PI * 2; bolts.push({ x: b.x + Math.cos(an) * (b.r + 6), y: b.y + Math.sin(an) * (b.r + 6), vx: Math.cos(an) * 280, vy: Math.sin(an) * 280, r: 5, ang: an, dmg: MA.boltDmg, cause: "멀티암의 리벳 폭발에 맞았어요" }); }
+  sfx("shotgun"); shake(5);
+}
 function maNext(b) {
   const opts = ["claw", "torch", "gun"].filter((k) => maArm(b, k) && k !== b.last);
   const pool = opts.length ? opts : ["claw", "torch", "gun"].filter((k) => maArm(b, k));
@@ -1628,6 +1645,9 @@ function maNext(b) {
   if (k === "claw") { b.state = "clawWind"; b.t = b.tMax = MA.clawWind / sp; }
   else if (k === "torch") { b.state = "flameWind"; b.t = b.tMax = MA.flameWind / sp; b.fdir = Math.random() < 0.5 ? -1 : 1; }
   else { b.state = "gunWind"; b.t = b.tMax = MA.gunWind / sp; b.shots = MA.gunShots; b.gAim = 0; }
+  // 동시 공격: 팔이 2개 이상이면 40% 확률로 리벳 팔이 B-07을 따라 쏘며 거들어요
+  b.sup = null;
+  if (k !== "gun" && b.armsAlive >= 2 && maArm(b, "gun") && Math.random() < MA.combo) b.sup = { left: MA.supVolleys, t: MA.supWarn, warn: true };
   sfx("windup");
 }
 function armDown(a) {
@@ -1636,6 +1656,8 @@ function armDown(a) {
   burst(a.x, a.y, 30, "#ffb347", 320, 0.55, 3.2); debris(a.x, a.y, 12, ARM_DEF[a.kind].col);
   hitstop = Math.max(hitstop, 0.12); shake(12); sfx("explode");
   b.armsAlive = b.arms.filter((x) => !x.dead).length;
+  // 팔이 부서질 때마다 드론 3기 호출
+  for (let i = 0; i < 3; i++) { const an = Math.random() * Math.PI * 2; pending.push({ type: "drone", x: clamp(b.x + Math.cos(an) * 110, RX0 + 30, RX1 - 30), y: clamp(b.y + Math.sin(an) * 90, RY0 + 30, RY1 - 30), r: DRONE.r, t: 0.6 + i * 0.12 }); }
   if (b.act === a) { if (b.grab) maRelease(b); maRecover(b, 0.6); }
   if (b.armsAlive === 0) maEnrage(b);
   else { showBanner(ARM_DEF[a.kind].name + " 파괴", "남은 팔이 더 빨라져요 · 남은 팔 " + b.armsAlive + "개"); banner.t = 1.4; }
@@ -1652,6 +1674,8 @@ function maCancel(b) { if (b.grab) maRelease(b); const c = maArm(b, "claw"); if 
 function updateMultiarm(b, dt) {
   const p = player, ap = angTo(b, p), dp = dist(b, p), sp = maSpd(b);
   b.t -= dt; if (b.hitCd > 0) b.hitCd -= dt; if (b.shT > 0) b.shT -= dt;
+  if (b.sup && !["clawWind", "clawReach", "clawHold", "clawStuck", "clawBack", "flameWind", "flame"].includes(b.state)) b.sup = null;
+  maSupport(b, dt);
   const s = b.state;
   if (s === "move") {
     b.rot += MA.rot * dt;
@@ -1721,7 +1745,7 @@ function updateMultiarm(b, dt) {
       if (b.shots <= 0) maRecover(b, 0.8 / sp);
     }
   } else if (s === "recover") {
-    if (b.t <= 0) { b.state = "move"; b.t = (b.p2 ? 1.0 : rand(1.0, 1.6)) / sp; b.act = null; }
+    if (b.t <= 0) { b.state = "move"; b.t = (b.p2 ? 0.8 : rand(0.6, 1.0)) / sp; b.act = null; }
   } else if (s === "rage") {
     b.rot += 8 * dt;
     if (b.t <= 0) { b.state = "move"; b.t = 0.6; }
@@ -1751,7 +1775,13 @@ function updateMultiarm(b, dt) {
     if (!p.dead && p.z < 34 && dp < b.r + p.r && b.hitCd <= 0) { b.hitCd = 1.0; hurtPlayer(MA.spinDmg, b, "멀티암의 회전 돌진에 휩쓸렸어요"); }
     if (b.bounce >= MA.bounces || b.t <= 0) { b.state = "stun"; b.t = b.tMax = MA.dizzy; addText(b.x, b.y - 70, "어지러움!", C.hazard, true); sfx("slam"); }
   } else if (s === "stun") {
-    if (b.t <= 0) { b.state = "move"; b.t = 1.0; }
+    if (b.t <= 0) {
+      if (b.p2) { b.state = "ring"; b.t = 0.25; maRing(b, b.rot); burst(b.x, b.y, 16, C.eye, 260, 0.35, 2.4); }
+      else { b.state = "move"; b.t = 1.0; }
+    }
+  } else if (s === "ring") {
+    b.rot += 6 * dt;
+    if (b.t <= 0) { maRing(b, b.rot + Math.PI / MA.ring); b.state = "move"; b.t = 0.8; }
   }
   // 2페이즈: 벨트 방향 뒤집기
   if (b.p2 && room.belts) {
@@ -1840,7 +1870,7 @@ function drawArm(a) {
     ctx.fillStyle = "#454c55"; cRR(ctx, -8 * s, -11 * s, 22 * s, 22 * s, 5 * s); ctx.fill();
     ctx.fillStyle = flash ? "#fff" : "#8a96a3"; for (const yy of [-6, 0, 6]) ctx.fillRect(12 * s, (yy - 2) * s, 30 * s, 4 * s);
     ctx.fillStyle = "#30353b"; ctx.fillRect(12 * s, -9 * s, 5 * s, 18 * s); ctx.fillRect(34 * s, -9 * s, 4 * s, 18 * s);
-    if (b.state === "gunWind" || (b.state === "gun" && b.t > MA.gunGap * 0.5)) { ctx.fillStyle = "rgba(255,210,63,0.8)"; ctx.beginPath(); ctx.arc(46 * s, 0, 5 * s, 0, Math.PI * 2); ctx.fill(); }
+    if (b.state === "gunWind" || (b.state === "gun" && b.t > MA.gunGap * 0.5) || (b.sup && b.sup.warn)) { ctx.fillStyle = "rgba(255,210,63,0.8)"; ctx.beginPath(); ctx.arc(46 * s, 0, 5 * s, 0, Math.PI * 2); ctx.fill(); }
   }
   ctx.restore();
   if (a.frozen > 0) { ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = "#bff3ff"; ctx.beginPath(); ctx.arc(hx, hy, a.r, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
@@ -1850,6 +1880,11 @@ function drawArm(a) {
 function drawMultiMarks(b) {
   if (b.drop > 0) return;
   const p = player;
+  if (b.sup && b.sup.warn) {
+    const g = maArm(b, "gun");
+    if (g) { const base = angTo(g, p); ctx.save(); ctx.translate(g.x, syf(g.y)); ctx.scale(1, SY); ctx.globalAlpha = 0.7; ctx.strokeStyle = C.eye; ctx.lineWidth = 1.5; ctx.setLineDash([5, 6]);
+      for (const off of [-0.3, 0, 0.3]) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(base + off) * 260, Math.sin(base + off) * 260); ctx.stroke(); } ctx.restore(); }
+  }
   ctx.save();
   if (b.state === "clawWind") {
     const a = maArm(b, "claw");
