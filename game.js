@@ -511,7 +511,8 @@ function genRoom(n, reward) {
   }
   for (let i = 0; i < 7; i++) decals.push({ x: RX0 + mapRng() * (RX1 - RX0), y: RY0 + mapRng() * (RY1 - RY0), r: 14 + mapRng() * 34, a: 0.05 + mapRng() * 0.07 });
   const presses = z2 ? genPresses(mapRng, 2 + (localN(n) >= 3 ? 1 : 0), obstacles) : [];
-  const rm = { n, kind, reward, doors, obstacles, decals, belts, presses, cracks: [], wave: 0, waves: kind === "combat" ? 3 : 0, delay: 1.3, cleared: false, doorOpen: false, pickup: null, tookDamage: false, doorPulse: 0 };
+  const lasers = zoneOf(n) === 3 && kind === "combat" ? genLasers(mapRng, localN(n) >= 3 ? 2 : 1) : [];
+  const rm = { n, kind, reward, doors, obstacles, decals, belts, presses, lasers, cracks: [], wave: 0, waves: kind === "combat" ? 3 : 0, delay: 1.3, cleared: false, doorOpen: false, pickup: null, tookDamage: false, doorPulse: 0 };
   if (kind === "boss") { rm.delay = 1.8; rm.bossSpawned = false; rm.boss = null; rm.bossDeadT = 0; rm.wreck = null; }
   if (reward === "challenge") { rm.challenge = true; rm.waves = 0; rm.delay = 1.6; }
   if (kind === "station") { rm.cleared = true; rm.pickup = { x: W / 2, y: (RY0 + RY1) / 2 - 20, type: specialKind(), t: 0 }; }
@@ -558,6 +559,7 @@ function startRun() {
   $("ovTitle").hidden = true; $("ovDead").hidden = true; $("ovPause").hidden = true; $("ovChoice").hidden = true;
 }
 function enterDoor(d) {
+  if (d.type === "boss" && zoneOf(room.n) === 3) { winZone(); return; } // 임시: 최종 보스 QC-9는 4-3b에서
   let zoneUp = false;
   if (d.type === "exit") {
     if (zoneOf(room.n) >= ZONES) { winZone(); return; }
@@ -572,7 +574,7 @@ function enterDoor(d) {
     // 구역 돌파: 보너스 +500, 체력 30% 회복
     const p = player, heal = Math.round(p.maxHp * 0.3);
     run.score += 500; p.hp = Math.min(p.maxHp, p.hp + heal);
-    showBanner(zoneOf(n) + "구역 · " + ZONE_NAME[zoneOf(n)], "돌파 보너스 +500 · 체력 +" + heal + " · 컨베이어와 프레스를 조심하세요"); banner.t = 3;
+    showBanner(zoneOf(n) + "구역 · " + ZONE_NAME[zoneOf(n)], "돌파 보너스 +500 · 체력 +" + heal + " · " + ({ 2: "컨베이어와 프레스를 조심하세요", 3: "레이저 스캐너는 점프로 넘으세요" }[zoneOf(n)] || "")); banner.t = 3;
     room.delay = 3;
     sfx("revive");
   }
@@ -1123,11 +1125,11 @@ function drawBooms() {
 }
 
 // ================= 구역 =================
-const ZONES = 2; // 지금까지 만든 구역 수 (3구역은 4-3에서)
+const ZONES = 3; // 지금까지 만든 구역 수
 const zoneOf = (n) => Math.ceil(n / ZONE_ROOMS);
 const localN = (n) => (n - 1) % ZONE_ROOMS + 1;
 const curZone = () => (room ? zoneOf(room.n) : 1);
-const ZONE_NAME = { 1: "폐기장", 2: "조립 라인" };
+const ZONE_NAME = { 1: "폐기장", 2: "조립 라인", 3: "품질 검사실" };
 function roomLabel(n) { return zoneOf(n) + "구역 " + localN(n) + "/" + ZONE_ROOMS; }
 
 // ================= 2구역 함정: 컨베이어 벨트 · 프레스 =================
@@ -1714,16 +1716,220 @@ function startBoss2Test() {
   enterDoor({ type: "boss" });
 }
 
+// ================= 3구역: 레이저 스캐너 · 정예 적 · 인스펙터 =================
+const LASER = { sp: 115, warn: 1.0, z: 10, half: 7, dmg: 12, mark: 3, markMul: 1.25 };
+const INSP = { hp: 60, r: 15, sp: 50, aimT: 1.2, lockT: 0.3, dmg: 20, near: 200, far: 420, cd: 1.6 };
+const ELITE = { chance: 0.25, hpMul: 1.5, shield: 30, shRegen: 15, shDelay: 5, haste: 1.4,
+  col: { shield: "#5ab0ff", split: "#c58cff", haste: "#ff6a2b" }, name: { shield: "보호막", split: "분열", haste: "가속" } };
+const ELITE_ALLOW = { spark: ["shield", "split", "haste"], turret: ["shield", "haste"], drum: ["haste"], lift: ["shield", "haste"], medic: ["shield"], insp: ["shield", "haste"] };
+function genLasers(rng, count) {
+  const ls = [];
+  const span = (RY1 - RY0 - 200) / count;
+  for (let i = 0; i < count; i++) {
+    const y0 = RY0 + 90 + i * span, y1 = y0 + span - 30;
+    ls.push({ y0, y1, y: rng() < 0.5 ? y0 : y1, dir: 0, state: "off", t: 1.5 + i * 1.6 + rng() });
+  }
+  return ls;
+}
+function updateLasers(dt) {
+  const ls = room.lasers; if (!ls || !ls.length) return;
+  const p = player, active = room.wave > 0 && !room.cleared;
+  for (const L of ls) {
+    L.t -= dt;
+    if (L.state === "off") {
+      if (L.t <= 0) { if (active) { L.state = "warn"; L.t = LASER.warn; L.dir = Math.abs(L.y - L.y0) < 2 ? 1 : -1; sfx("windup"); } else L.t = 0.5; }
+    } else if (L.state === "warn") {
+      if (L.t <= 0) { L.state = "on"; sfx("zap"); }
+    } else if (L.state === "on") {
+      L.y += L.dir * LASER.sp * dt;
+      if ((L.dir > 0 && L.y >= L.y1) || (L.dir < 0 && L.y <= L.y0)) { L.y = L.dir > 0 ? L.y1 : L.y0; L.state = "off"; L.t = 1.8 + Math.random() * 1.2; }
+      if (!p.dead && p.z < 14 && Math.abs(p.y - L.y) < LASER.half + 4 && p.inv <= 0 && p.dash.t <= 0) {
+        hurtPlayer(LASER.dmg, null, "레이저 스캐너에 불량 판정을 받았어요");
+        p.markT = LASER.mark; addText(p.x, p.y - 44, "불량 표식", C.danger, true);
+      }
+    }
+    if (!active && L.state === "on") { L.state = "off"; L.t = 9; }
+  }
+}
+function drawLaserEmitter(x, y, on) {
+  const Y = syf(y, LASER.z);
+  ctx.fillStyle = "#3a4552"; ctx.fillRect(x - 6, Y - 16, 12, 22);
+  ctx.fillStyle = C.hazard; ctx.fillRect(x - 6, Y - 16, 12, 3);
+  ctx.fillStyle = on ? C.danger : "#5a1a14"; ctx.beginPath(); ctx.arc(x, Y, 4, 0, Math.PI * 2); ctx.fill();
+}
+function drawLasers() {
+  const ls = room.lasers; if (!ls || !ls.length) return;
+  const blink = Math.floor(performance.now() / 110) % 2 === 0;
+  for (const L of ls) {
+    if (L.state === "warn") {
+      // 이동 경로: 시작선·끝선 점선 + 방향 화살표
+      ctx.save(); ctx.globalAlpha = 0.65; ctx.strokeStyle = C.danger; ctx.lineWidth = 2; ctx.setLineDash([10, 8]);
+      for (const yy of [L.y0, L.y1]) { ctx.beginPath(); ctx.moveTo(RX0, syf(yy)); ctx.lineTo(RX1, syf(yy)); ctx.stroke(); }
+      ctx.setLineDash([]); ctx.fillStyle = C.danger;
+      const ay = (L.y0 + L.y1) / 2;
+      for (const ax of [RX0 + 80, W / 2, RX1 - 80]) { ctx.beginPath(); ctx.moveTo(ax, syf(ay + L.dir * 12)); ctx.lineTo(ax - 9, syf(ay - L.dir * 4)); ctx.lineTo(ax + 9, syf(ay - L.dir * 4)); ctx.closePath(); ctx.fill(); }
+      ctx.globalAlpha = blink ? 0.9 : 0.35; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(RX0, syf(L.y, LASER.z)); ctx.lineTo(RX1, syf(L.y, LASER.z)); ctx.stroke();
+      ctx.restore();
+    } else if (L.state === "on") {
+      const Y = syf(L.y, LASER.z);
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(255,60,60,0.28)"; ctx.lineWidth = 16; ctx.beginPath(); ctx.moveTo(RX0, Y); ctx.lineTo(RX1, Y); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,80,70,0.9)"; ctx.lineWidth = 4; ctx.stroke();
+      ctx.strokeStyle = "rgba(255,235,225,0.95)"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.restore();
+      floorEllipse(W / 2, L.y, (RX1 - RX0) / 2, 5, "rgba(255,60,60,0.12)");
+    }
+    drawLaserEmitter(RX0 + 4, L.y, L.state === "on" || (L.state === "warn" && blink));
+    drawLaserEmitter(RX1 - 4, L.y, L.state === "on" || (L.state === "warn" && blink));
+  }
+}
+// ---------- 정예 ----------
+function pickElite(type) {
+  const allow = ELITE_ALLOW[type];
+  if (!allow || curZone() < 3 || Math.random() >= ELITE.chance) return null;
+  return allow[Math.floor(Math.random() * allow.length)];
+}
+function applyElite(e, kind) {
+  e.elite = kind; e.hp = e.maxHp = Math.round(e.maxHp * ELITE.hpMul);
+  if (kind === "shield") { e.sh = ELITE.shield; e.shT = 0; }
+}
+function updateElite(e, dt) {
+  if (e.elite === "shield") {
+    if (e.shT > 0) e.shT -= dt;
+    else if (e.sh < ELITE.shield) e.sh = Math.min(ELITE.shield, e.sh + ELITE.shRegen * dt);
+  } else if (e.elite === "haste" && Math.random() < 0.35 && e.type !== "turret") {
+    particles.push({ x: e.x, y: e.y, z: 12, vz: 0, vx: 0, vy: 0, life: 0.25, max: 0.25, color: ELITE.col.haste, size: e.r * 0.5, glow: true, nograv: true });
+  }
+}
+function eliteAbsorb(e, dmg) {
+  if (!(e.sh > 0)) return dmg;
+  const a = Math.min(e.sh, dmg); e.sh -= a; e.shT = ELITE.shDelay;
+  burst(e.x, e.y, 5, ELITE.col.shield, 160, 0.2, 2);
+  if (e.sh <= 0) { addText(e.x, e.y - e.r - 14, "보호막 파괴", ELITE.col.shield, false); burst(e.x, e.y, 14, ELITE.col.shield, 240, 0.35, 2.6); sfx("parry"); }
+  return dmg - a;
+}
+function eliteSplit(e) {
+  if (e.elite !== "split" || e.mini) return;
+  for (const s of [-1, 1]) {
+    const m = makeEnemyBase({ type: "spark", x: e.x + s * 10, y: e.y });
+    m.mini = true; m.r = 9; m.hp = m.maxHp = Math.max(6, Math.round(e.maxHp * 0.3)); m.cd = 0.8 + Math.random() * 0.5;
+    m.vx = s * 220; m.vy = rand(-80, 80);
+    enemies.push(m);
+  }
+  burst(e.x, e.y, 14, ELITE.col.split, 220, 0.35, 2.4);
+  addText(e.x, e.y - 30, "분열!", ELITE.col.split, true);
+}
+function drawEliteMarks(e) {
+  if (!e.elite || e.drop > 0) return;
+  ctx.save(); ctx.translate(e.x, syf(e.y)); ctx.scale(1, SY);
+  ctx.strokeStyle = "#f2c230"; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); ctx.lineDashOffset = -performance.now() / 60;
+  ctx.beginPath(); ctx.arc(0, 0, e.r + 9, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+}
+function drawEliteTop(e, topZ) {
+  if (!e.elite || e.drop > 0) return;
+  const x = e.x, y = syf(e.y, topZ) - 10, s = 1, col = ELITE.col[e.elite];
+  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x - 7 * s, y); ctx.lineTo(x - 7 * s, y - 6); ctx.lineTo(x - 3.5, y - 3); ctx.lineTo(x, y - 8); ctx.lineTo(x + 3.5, y - 3); ctx.lineTo(x + 7, y - 6); ctx.lineTo(x + 7, y); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 1; ctx.stroke();
+  if (e.sh > 0) {
+    const zc = Math.max(12, topZ * 0.45);
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.35 + 0.5 * (e.sh / ELITE.shield);
+    ctx.strokeStyle = ELITE.col.shield; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(e.x, syf(e.y, zc), e.r + 8, e.r + 10, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "rgba(90,176,255,0.08)"; ctx.fill(); ctx.restore();
+  }
+}
+// ---------- 인스펙터 QA-3 ----------
+function inspRay(e, a) {
+  const cx = Math.cos(a), cy = Math.sin(a);
+  let d = 0;
+  for (; d < 1200; d += 6) { const x = e.x + cx * d, y = e.y + cy * d; if (x < RX0 || x > RX1 || y < RY0 || y > RY1 || room.obstacles.some((o) => inRect(x, y, o))) break; }
+  return d;
+}
+function updateInsp(e, dt, dp, ap) {
+  const p = player;
+  if (e.beamT > 0) e.beamT -= dt;
+  if (e.state === "move") {
+    let mx = 0, my = 0, sp = INSP.sp;
+    if (!p.dead && dp > INSP.far) { mx = Math.cos(ap); my = Math.sin(ap); }
+    else if (!p.dead && dp < INSP.near) { mx = -Math.cos(ap); my = -Math.sin(ap); sp *= 0.8; e.folded = true; }
+    else { e.folded = false; e.strafe = e.strafe || (Math.random() < 0.5 ? 1 : -1); mx = -Math.sin(ap) * 0.4 * e.strafe; my = Math.cos(ap) * 0.4 * e.strafe; }
+    e.x += mx * sp * dt; e.y += my * sp * dt; e.face = ap;
+    e.cd -= dt;
+    if (!p.dead && e.cd <= 0 && dp < INSP.far + 60 && dp > 90 && los(e, p)) { e.state = "aim"; e.t = INSP.aimT; e.aim = ap; e.folded = false; sfx("windup"); }
+  } else if (e.state === "aim") {
+    e.t -= dt;
+    if (e.t > INSP.lockT && !p.dead) e.aim += clamp(angDiff(e.aim, ap), -4 * dt, 4 * dt);
+    e.len = inspRay(e, e.aim);
+    if (e.t <= 0) {
+      e.len = inspRay(e, e.aim);
+      const cx = Math.cos(e.aim), cy = Math.sin(e.aim), t = clamp((p.x - e.x) * cx + (p.y - e.y) * cy, 0, e.len);
+      const px = e.x + cx * t, py = e.y + cy * t;
+      if (!p.dead && p.z < 40 && Math.hypot(p.x - px, p.y - py) < p.r + 6) hurtPlayer(INSP.dmg, e, "인스펙터의 검사 레이저에 맞았어요");
+      e.beamT = 0.25; e.state = "cool"; e.t = 0.9; sfx("zap"); shake(4);
+    }
+  } else if (e.state === "cool") {
+    e.t -= dt; if (e.t <= 0) { e.state = "move"; e.cd = INSP.cd + Math.random() * 0.8; }
+  }
+}
+function inspInterrupt(e) {
+  if (e.type === "insp" && e.state === "aim") { e.state = "cool"; e.t = 0.6; addText(e.x, e.y - 50, "조준 끊김", C.visor, false); }
+}
+function drawInsp(e) {
+  const flash = e.flash > 0, z0 = dropZ(e), X = e.x, Y = syf(e.y, z0), s = 0.85;
+  const fold = e.folded ? 0.55 : 1, dir = Math.cos(e.state === "aim" ? e.aim : e.face || 0) >= 0 ? 1 : -1;
+  ctx.strokeStyle = "#59616b"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+  for (const [dx, dy] of [[-18, 0], [18, 0], [4, 6]]) { ctx.beginPath(); ctx.moveTo(X, Y - 30 * s * fold); ctx.lineTo(X + dx * s * fold, Y + dy * s - 2); ctx.stroke(); }
+  const hy = Y - 30 * s * fold - 14 * s;
+  ctx.fillStyle = "#8b949e"; ctx.fillRect(X - 2, hy, 4, 14 * s);
+  ctx.fillStyle = flash ? "#fff" : cLin(ctx, X - 20 * s, 0, X + 20 * s, 0, [[0, "#c9d3dc"], [0.5, "#f2f6f8"], [1, "#9aa4ad"]]);
+  cRR(ctx, X - 20 * s, hy - 26 * s, 40 * s, 28 * s, 8 * s); ctx.fill();
+  ctx.fillStyle = "#3ee0d0"; ctx.fillRect(X - 20 * s, hy - 6 * s, 40 * s, 3 * s);
+  const lx = X + dir * 14 * s, ly = hy - 12 * s, aim = e.state === "aim";
+  ctx.fillStyle = "#1a1d20"; ctx.beginPath(); ctx.arc(lx, ly, 11 * s, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = aim ? C.danger : "#5ad8ff"; ctx.beginPath(); ctx.arc(lx, ly, 6 * s, 0, Math.PI * 2); ctx.fill();
+  if (aim) { const lg = ctx.createRadialGradient(lx, ly, 1, lx, ly, 16); lg.addColorStop(0, "rgba(255,75,58,0.6)"); lg.addColorStop(1, "rgba(255,75,58,0)"); ctx.fillStyle = lg; ctx.fillRect(lx - 16, ly - 16, 32, 32); }
+  if (e.beamT > 0) {
+    const ex = e.x + Math.cos(e.aim) * e.len, ey = syf(e.y + Math.sin(e.aim) * e.len, 24);
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = e.beamT / 0.25; ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(255,70,60,0.35)"; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,230,220,0.95)"; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+  }
+  return syf(e.y) - (hy - 26 * s) + 4;
+}
+function drawInspMarks(e) {
+  if (e.type !== "insp" || e.state !== "aim") return;
+  const locked = e.t <= INSP.lockT, k = 1 - e.t / INSP.aimT;
+  ctx.save(); ctx.globalAlpha = locked ? 0.95 : 0.4 + k * 0.4; ctx.strokeStyle = C.danger; ctx.lineWidth = locked ? 3.5 : 2; ctx.setLineDash(locked ? [] : [10, 7]);
+  ctx.beginPath(); ctx.moveTo(e.x, syf(e.y)); ctx.lineTo(e.x + Math.cos(e.aim) * e.len, syf(e.y + Math.sin(e.aim) * e.len)); ctx.stroke(); ctx.restore();
+}
+// 3구역 테스트: 무작위 모듈 5개(희귀)로 3구역 첫 방에서 시작
+function startZone3Test() {
+  startRun();
+  run.test = "z3";
+  for (const sl of SLOT_ORDER) { const ids = Object.keys(MODS).filter((id) => MODS[id].slot === sl); player.mods[sl] = { id: ids[Math.floor(Math.random() * ids.length)], r: 1 }; }
+  recalcStats();
+  room.n = ZONE_ROOMS * 2;
+  enterDoor({ type: "exit" });
+}
+
 // ================= 웨이브 =================
 function spawnWave(w) {
   const n = localN(room.n), z2 = curZone() === 2;
-  let sparks, turrets, drums, lifts, drones = 0, medics = 0;
-  if (!z2) {
+  let sparks, turrets, drums, lifts, drones = 0, medics = 0, insps = 0;
+  if (curZone() === 1) {
     sparks = 1 + w + Math.floor((n - 1) * 0.8);
     turrets = Math.max(0, w - 1 + Math.floor((n - 1) / 2));
     // 방 3부터 새 적: 폭발 드럼통(웨이브 2·3), 방패 지게차(방 3 웨이브 2, 방 4~5 웨이브 2·3)
     drums = n >= 3 ? (w >= 2 ? 1 : 0) + (n >= 5 && w === 3 ? 1 : 0) : 0;
     lifts = n >= 3 ? (w === 2 ? 1 : 0) + (n >= 4 && w === 3 ? 1 : 0) : 0;
+  } else if (curZone() >= 3) {
+    // 3구역: 인스펙터(웨이브 2·3), 기존 적 모두 섞임. 적의 25%는 정예
+    sparks = 1 + w + Math.floor((n - 1) * 0.6);
+    turrets = Math.max(0, w - 1 + Math.floor((n - 1) / 2));
+    drums = w >= 2 ? 1 : 0;
+    lifts = w === 3 ? 1 : 0;
+    drones = w === 1 && n >= 2 ? 4 : 0;
+    medics = w >= 2 && n >= 3 ? 1 : 0;
+    insps = (w >= 2 ? 1 : 0) + (n >= 4 && w === 3 ? 1 : 0);
   } else {
     // 2구역: 드론 떼(웨이브 1·3), 수리봇(방 2부터 웨이브 2·3)
     sparks = 1 + w + Math.floor((n - 1) * 0.6);
@@ -1734,7 +1940,8 @@ function spawnWave(w) {
     medics = n >= 2 && w >= 2 ? 1 + (n >= 5 && w === 3 ? 1 : 0) : 0;
   }
   const list = [];
-  for (let i = 0; i < Math.max(1, sparks - drums - lifts - medics); i++) list.push("spark");
+  for (let i = 0; i < Math.max(1, sparks - drums - lifts - medics - insps); i++) list.push("spark");
+  for (let i = 0; i < insps; i++) list.push("insp");
   for (let i = 0; i < medics; i++) list.push("medic");
   for (let i = 0; i < turrets; i++) list.push("turret");
   for (let i = 0; i < drums; i++) list.push("drum");
@@ -1751,20 +1958,25 @@ function spawnWave(w) {
       p = { x: RX0 + 40 + mapRng() * (RX1 - RX0 - 80), y: RY0 + 40 + mapRng() * (RY1 - RY0 - 80), r };
       tries++;
     } while (tries < 60 && (dist(p, player) < 230 || room.obstacles.some((o) => inRect(p.x, p.y, o, r + 10)) || pending.some((q) => dist(p, q) < 50)));
-    pending.push({ type, x: p.x, y: p.y, r, t: 0.9 + i * 0.12 });
+    pending.push({ type, x: p.x, y: p.y, r, t: 0.9 + i * 0.12, elite: pickElite(type) });
   });
   showBanner("웨이브 " + w + " / " + room.waves, "");
   banner.t = 1.3;
 }
-const ENEMY_R = { spark: 13, turret: 16, drum: DRUM.r, lift: LIFT.r, drone: DRONE.r, medic: MEDIC.r };
+const ENEMY_R = { spark: 13, turret: 16, drum: DRUM.r, lift: LIFT.r, drone: DRONE.r, medic: MEDIC.r, insp: INSP.r };
 function makeEnemy(s) {
   const e = makeEnemyBase(s);
   // 2구역: 1구역 적 체력 1.3배
-  if (curZone() >= 2 && ["spark", "turret", "drum", "lift"].includes(e.type)) { e.hp = e.maxHp = Math.round(e.maxHp * 1.3); }
+  // 구역별 체력: 1구역 적은 2구역 1.3배, 3구역 1.6배 / 2구역 적(드론·수리봇)은 3구역 1.3배
+  const z = curZone(), old = ["spark", "turret", "drum", "lift"].includes(e.type);
+  const mul = old ? (z >= 3 ? 1.6 : z >= 2 ? 1.3 : 1) : ["drone", "medic"].includes(e.type) && z >= 3 ? 1.3 : 1;
+  if (mul !== 1) e.hp = e.maxHp = Math.round(e.maxHp * mul);
+  if (s.elite) applyElite(e, s.elite);
   return e;
 }
 function makeEnemyBase(s) {
   if (s.type === "drone") return { type: "drone", x: s.x, y: s.y, r: DRONE.r, hp: DRONE.hp, maxHp: DRONE.hp, vx: 0, vy: 0, flash: 0, state: "orbit", t: 0, cd: 1.2 + Math.random() * 2.5, ang: Math.random() * Math.PI * 2, orbitR: 95 + Math.random() * 40, spin: Math.random() < 0.5 ? -1 : 1, bob: Math.random() * 6, aim: 0, hitPlayer: false };
+  if (s.type === "insp") return { type: "insp", x: s.x, y: s.y, r: INSP.r, hp: INSP.hp, maxHp: INSP.hp, vx: 0, vy: 0, flash: 0, state: "move", t: 0, cd: 1 + Math.random(), aim: 0, len: 0, face: 0, beamT: 0, folded: false };
   if (s.type === "medic") return { type: "medic", x: s.x, y: s.y, r: MEDIC.r, hp: MEDIC.hp, maxHp: MEDIC.hp, vx: 0, vy: 0, flash: 0, state: "move", t: 0, bob: 0, beam: null };
   if (s.type === "drum") return { type: "drum", x: s.x, y: s.y, r: DRUM.r, hp: DRUM.hp, maxHp: DRUM.hp, vx: 0, vy: 0, flash: 0, state: "chase", t: 0, roll: 0, fly: 0 };
   if (s.type === "lift") return { type: "lift", x: s.x, y: s.y, r: LIFT.r, hp: LIFT.hp, maxHp: LIFT.hp, vx: 0, vy: 0, flash: 0, state: "chase", t: 0, cd: 1.5, face: angTo(s, player), roll: 0, blockT: 0, hitPlayer: false };
@@ -1797,6 +2009,7 @@ function hurtEnemy(e, dmg, ang, kb, heavy, src = "atk", color) {
   if (e.state === "stun" || e.frozen > 0) dmg *= e.type === "boss" ? BOSS.stunMul : 1.5;
   if (e.burnS > 0 && player.st.burnBonus) dmg *= 1 + player.st.burnBonus;
   if (e.frozen > 0) { if (hasDuo("hydcool")) dmg *= 1.5; if (hasDuo("superconduct") && color === FAM.volt.color) dmg *= 3; }
+  if (e.sh > 0) { dmg = eliteAbsorb(e, dmg); if (dmg <= 0) { e.flash = 0.05; if (!proc) { hitstop = Math.max(hitstop, 0.03); sfx("tick"); } return; } }
   if (e.kind === "multiarm" && e.armsAlive > 0) { dmg *= MA.shield; if (!(e.shT > 0)) { e.shT = 0.25; burst(e.x, e.y - 10, 6, "#7fb4ff", 200, 0.25, 2.2); } }
   dmg = Math.max(1, Math.round(dmg));
   e.hp -= dmg; e.flash = proc ? 0.05 : 0.1;
@@ -1813,6 +2026,7 @@ function hurtEnemy(e, dmg, ang, kb, heavy, src = "atk", color) {
     shake(heavy ? 7 : 3);
     sfx(heavy ? "heavy" : "hit");
   }
+  if (!proc && e.hp > 0) inspInterrupt(e);
   if (e.hp <= 0) killEnemy(e);
   if (src === "atkSoft") onHit(e, "atk"); else if (!proc) onHit(e, src);
 }
@@ -1825,11 +2039,12 @@ function killEnemy(e) {
     burst(e.x, e.y, 14, FAM.heat.color, 200, 0.4, 2.4);
   }
   run.kills++;
-  const pts = { turret: 15, lift: 25, drone: 5, medic: 20 }[e.type] || 10;
+  const pts = ({ turret: 15, lift: 25, drone: 5, medic: 20, insp: 20 }[e.type] || 10) * (e.elite ? 2 : 1);
   run.score += pts;
-  gainScrap({ turret: 3, lift: 5, drone: 1, medic: 4 }[e.type] || 2, e.x, e.y, true);
+  gainScrap(({ turret: 3, lift: 5, drone: 1, medic: 4, insp: 4 }[e.type] || 2) + (e.elite ? 5 : 0), e.x, e.y, true);
+  eliteSplit(e);
   burst(e.x, e.y, 22, "#ffb347", 300, 0.45, 3);
-  debris(e.x, e.y, e.type === "drone" ? 4 : 9, e.type === "turret" ? C.turret : e.type === "lift" ? C.hazard : e.type === "drone" ? "#5a7ea8" : e.type === "medic" ? "#e8edf2" : C.spark);
+  debris(e.x, e.y, e.type === "drone" ? 4 : 9, e.type === "turret" ? C.turret : e.type === "lift" ? C.hazard : e.type === "drone" ? "#5a7ea8" : e.type === "medic" || e.type === "insp" ? "#e8edf2" : C.spark);
   // 드럼통: 맞은 방향으로 날아가다 0.5초(점화 중이면 0.3초) 뒤, 또는 적에 닿으면 폭발
   if (e.type === "drum") booms.push({ x: e.x, y: e.y, vx: e.vx * 2.2, vy: e.vy * 2.2, r: DRUM.r, t: e.state === "fuse" ? 0.3 : DRUM.delay });
   addText(e.x, e.y - 22, "+" + pts, C.good, false);
@@ -1840,6 +2055,7 @@ function killEnemy(e) {
 function hurtPlayer(dmg, from, cause) {
   const p = player;
   if (p.dead || p.inv > 0 || p.dash.t > 0) return;
+  if (p.markT > 0) dmg *= LASER.markMul; // 불량 표식: 받는 피해 +25%
   dmg = Math.max(1, Math.round(dmg * (1 - p.st.armor)));
   p.hp -= dmg; p.inv = 0.75; hurtFlash = 1; room.tookDamage = true; p.lagT = 0.4;
   if (has("volt_passive")) { const v = mval("volt_passive"); const near = enemies.filter((e) => !e.dead && !e.drop && dist(e, p) < 170).sort((a, b) => dist(a, p) - dist(b, p)).slice(0, 3); for (const e of near) { zap(p.x, p.y, 20, e.x, e.y, 16); hurtEnemy(e, v, angTo(p, e), 60, false, "proc", FAM.volt.color); } if (near.length) sfx("zap"); }
@@ -2546,6 +2762,7 @@ function update(dt) {
       if (dd < min && dd > 0) { const an = angTo(e, p); p.x = e.x + Math.cos(an) * min; p.y = e.y + Math.sin(an) * min; }
     }
     if (p.inv > 0) p.inv -= dt;
+    if (p.markT > 0) p.markT -= dt;
     if (p.hpLag > p.hp) { if (p.lagT > 0) p.lagT -= dt; else p.hpLag = Math.max(p.hp, p.hpLag - p.maxHp * 0.9 * dt); }
     else { if (p.hp > p.hpLag + 0.5) p.healGlow = 0.6; p.hpLag = p.hp; }
     if (p.healGlow > 0) p.healGlow -= dt;
@@ -2642,7 +2859,9 @@ function update(dt) {
   pending = pending.filter((s) => !s.done);
 
   // --- 적 ---
+  const DT = dt;
   for (const e of enemies) {
+    const dt = e.elite === "haste" ? DT * ELITE.haste : DT; // 정예 '가속'은 모든 행동이 1.4배
     if (e.dead) continue;
     if (e.drop > 0) {
       e.drop -= dt;
@@ -2656,6 +2875,7 @@ function update(dt) {
       continue;
     }
     if (e.flash > 0) e.flash -= dt;
+    if (e.elite) updateElite(e, dt);
     updateStatus(e, dt);
     if (e.dead) continue;
     const dp = dist(e, p), ap = angTo(e, p);
@@ -2665,6 +2885,8 @@ function update(dt) {
       updateBoss(e, dt);
     } else if (e.type === "arm") {
       if (e.state === "stun" && e.owner && e.owner.state !== "clawStuck") e.state = "idle";
+    } else if (e.type === "insp") {
+      updateInsp(e, dt, dp, ap);
     } else if (e.type === "drone") {
       updateDrone(e, dt, dp, ap);
     } else if (e.type === "medic") {
@@ -2755,6 +2977,7 @@ function update(dt) {
 
   updateOils(dt);
   updatePresses(dt);
+  updateLasers(dt);
   updateBooms(dt);
   // --- 웨이브 진행 ---
   if (room.kind === "boss") updateBossRoom(dt);
@@ -2984,9 +3207,10 @@ function showResult(won) {
   $("stScore").textContent = run.score;
   $("stKills").textContent = run.kills;
   const s = Math.floor(run.time); $("stTime").textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
-  $("deadTag").textContent = (run.test ? ({ z2: "2구역 테스트 · ", b2: "2구역 보스 테스트 · " }[run.test] || "1구역 보스 테스트 · ") : "") + (won ? curZone() + "구역 돌파" : "B-07 파괴됨");
-  $("deadTitle").textContent = won ? "멀티암을 부수고 조립 라인을 빠져나왔어요" : roomLabel(room.n) + "에서 작동 정지";
-  $("deadCause").textContent = won ? "멀티암 처치 +1000 · 탈출 보너스 +500. 3구역 품질 검사실은 다음 업데이트에서 만나요." : run.cause;
+  $("deadTag").textContent = (run.test ? ({ z2: "2구역 테스트 · ", b2: "2구역 보스 테스트 · ", z3: "3구역 테스트 · " }[run.test] || "1구역 보스 테스트 · ") : "") + (won ? curZone() + "구역 돌파" : "B-07 파괴됨");
+  const wz = curZone();
+  $("deadTitle").textContent = won ? (wz >= 3 ? "품질 검사실 끝까지 왔어요" : "멀티암을 부수고 조립 라인을 빠져나왔어요") : roomLabel(room.n) + "에서 작동 정지";
+  $("deadCause").textContent = won ? (wz >= 3 ? "도달 보너스 +500. 최종 보스 QC-9는 다음 업데이트(4-3b)에서 만나요." : "멀티암 처치 +1000 · 탈출 보너스 +500.") : run.cause;
   $("deadBuild").textContent = buildText();
   $("ovDead").hidden = false;
   $("btnRetry").focus();
@@ -3234,11 +3458,12 @@ function shadow(x, y, r, a = 0.42) { floorEllipse(x + 2, y + 3, r + 2, r * 0.75,
 function drawFloor() {
   ctx.fillStyle = "#0c0e10"; ctx.fillRect(-20, -20, W + 40, H + 40);
   const fy0 = syf(RY0), fy1 = syf(RY1);
-  const z2 = curZone() === 2;
+  const z2 = curZone() === 2, z3 = curZone() >= 3;
+  if (!GR.floor3) { GR.floor3 = ctx.createLinearGradient(0, fy0, 0, fy1); GR.floor3.addColorStop(0, "#9aa6ae"); GR.floor3.addColorStop(1, "#b4bec5"); }
   if (!GR.floor) { GR.floor = ctx.createLinearGradient(0, fy0, 0, fy1); GR.floor.addColorStop(0, "#15181b"); GR.floor.addColorStop(1, "#1f2327"); }
   if (!GR.floor2) { GR.floor2 = ctx.createLinearGradient(0, fy0, 0, fy1); GR.floor2.addColorStop(0, "#131a21"); GR.floor2.addColorStop(1, "#1b242d"); }
-  ctx.fillStyle = z2 ? GR.floor2 : GR.floor; ctx.fillRect(RX0, fy0, RX1 - RX0, fy1 - fy0);
-  ctx.strokeStyle = z2 ? "#1e2933" : C.tile; ctx.lineWidth = 1;
+  ctx.fillStyle = z3 ? GR.floor3 : z2 ? GR.floor2 : GR.floor; ctx.fillRect(RX0, fy0, RX1 - RX0, fy1 - fy0);
+  ctx.strokeStyle = z3 ? "#8b979f" : z2 ? "#1e2933" : C.tile; ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = RX0; x <= RX1; x += 40) { ctx.moveTo(x + 0.5, fy0); ctx.lineTo(x + 0.5, fy1); }
   for (let y = RY0; y <= RY1; y += 40) { const sy = Math.round(syf(y)) + 0.5; ctx.moveTo(RX0, sy); ctx.lineTo(RX1, sy); }
@@ -3284,10 +3509,16 @@ function drawFloor() {
 
 function drawBackWall() {
   const top = BACK_TOP, bot = syf(RY0);
-  const z2 = curZone() === 2;
+  const z2 = curZone() === 2, z3 = curZone() >= 3;
+  if (!GR.back3) { GR.back3 = ctx.createLinearGradient(0, top, 0, bot); GR.back3.addColorStop(0, "#c9d2d8"); GR.back3.addColorStop(1, "#8e9aa3"); }
   if (!GR.back) { GR.back = ctx.createLinearGradient(0, top, 0, bot); GR.back.addColorStop(0, "#353b42"); GR.back.addColorStop(1, "#24282d"); }
   if (!GR.back2) { GR.back2 = ctx.createLinearGradient(0, top, 0, bot); GR.back2.addColorStop(0, "#2f3c4a"); GR.back2.addColorStop(1, "#1d2630"); }
-  ctx.fillStyle = z2 ? GR.back2 : GR.back; ctx.fillRect(0, top, W, bot - top);
+  ctx.fillStyle = z3 ? GR.back3 : z2 ? GR.back2 : GR.back; ctx.fillRect(0, top, W, bot - top);
+  if (z3) { // 청록 표시선 + 검사 표시판
+    ctx.fillStyle = C.visor; ctx.fillRect(RX0, top + 27, RX1 - RX0, 4);
+    ctx.font = '700 10px "IBM Plex Mono", monospace'; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    for (let x = RX0 + 30; x < RX1 - 80; x += 190) { ctx.fillStyle = "#1f2a30"; ctx.fillRect(x, top + 6, 64, 16); ctx.fillStyle = room.doorOpen ? C.good : Math.floor(performance.now() / 600 + x) % 3 === 0 ? C.danger : C.good; ctx.fillText(room.doorOpen ? "PASS" : "SCAN", x + 6, top + 14.5); }
+  }
   if (z2) { // 파란 작업등 띠
     ctx.fillStyle = "rgba(90,160,255,0.75)"; ctx.fillRect(RX0, top + 27, RX1 - RX0, 3);
     if (!GR.lamp2) { GR.lamp2 = ctx.createLinearGradient(0, top + 28, 0, top + 70); GR.lamp2.addColorStop(0, "rgba(90,160,255,0.18)"); GR.lamp2.addColorStop(1, "rgba(90,160,255,0)"); }
@@ -3425,6 +3656,15 @@ function drawFrontWall() {
 
 function drawCrate(o) {
   const top = syf(o.y) - BOX_H, depth = o.h * SY, front = top + depth;
+  if (room && curZone() >= 3) { // 3구역: 검사대
+    ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(o.x + 8, syf(o.y) + 4, o.w, depth);
+    ctx.fillStyle = cLin(ctx, 0, front, 0, front + BOX_H, [[0, "#8e9aa3"], [1, "#6b7780"]]); ctx.fillRect(o.x, front, o.w, BOX_H);
+    ctx.fillStyle = "#4a555e"; ctx.fillRect(o.x + 6, front + BOX_H - 6, o.w - 12, 3);
+    ctx.fillStyle = "#eef2f4"; ctx.fillRect(o.x, top, o.w, depth);
+    ctx.fillStyle = C.visor; ctx.fillRect(o.x + 6, top + depth / 2 - 2, o.w - 12, 4);
+    ctx.strokeStyle = "#b8c3ca"; ctx.lineWidth = 2; ctx.strokeRect(o.x + 1, top + 1, o.w - 2, depth - 2);
+    return;
+  }
   ctx.fillStyle = "rgba(0,0,0,0.38)"; ctx.fillRect(o.x + 8, syf(o.y) + 4, o.w, depth);
   // 앞면
   const fg = ctx.createLinearGradient(0, front, 0, front + BOX_H);
@@ -3473,6 +3713,10 @@ function drawPlayerBar() {
   const p = player;
   if (!p || p.dead || !p.st) return;
   const w = 38, h = 5, x = p.x - w / 2, y = syf(p.y) - p.z - CHARS[charId].bar - 6;
+  if (p.markT > 0 && Math.floor(performance.now() / 150) % 4 !== 0) { // 불량 표식
+    ctx.save(); ctx.strokeStyle = C.danger; ctx.lineWidth = 4; ctx.lineCap = "round"; const mx = p.x, my = y - 14;
+    ctx.beginPath(); ctx.moveTo(mx - 7, my - 7); ctx.lineTo(mx + 7, my + 7); ctx.moveTo(mx + 7, my - 7); ctx.lineTo(mx - 7, my + 7); ctx.stroke(); ctx.restore();
+  }
   const f = clamp(p.hp / p.maxHp, 0, 1), lag = clamp(p.hpLag / p.maxHp, 0, 1);
   const blink = f <= 0.3 ? 0.55 + 0.45 * Math.sin(performance.now() / 140) : 1;
   ctx.save();
@@ -3617,7 +3861,8 @@ function drawTurret(e) {
 
 function drawEnemy(e) {
   if (e.type === "boss") { drawBoss(e); return; }
-  const top = e.type === "spark" ? drawSpark(e) + 22 : e.type === "drum" ? drawBarrel(e) : e.type === "lift" ? drawLift(e) : e.type === "drone" ? drawDrone(e) : e.type === "medic" ? drawMedic(e) : e.type === "arm" ? drawArm(e) : drawTurret(e) + 6;
+  const top = e.type === "spark" ? drawSpark(e) + 22 : e.type === "drum" ? drawBarrel(e) : e.type === "lift" ? drawLift(e) : e.type === "drone" ? drawDrone(e) : e.type === "medic" ? drawMedic(e) : e.type === "arm" ? drawArm(e) : e.type === "insp" ? drawInsp(e) : drawTurret(e) + 6;
+  drawEliteTop(e, top);
   if (e.frozen > 0) {
     const X = e.x, Y = syf(e.y, e.type === "spark" ? 14 : 16);
     ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = "#bff3ff";
@@ -3652,6 +3897,7 @@ function drawBolt(b) {
 // 바닥에 깔리는 예고 표시 (가독성 우선: 항상 바닥에 평평하게)
 function drawFloorMarks() {
   drawPressMarks();
+  drawLasers();
   drawFires();
   drawOils();
   drawBooms();
@@ -3675,6 +3921,7 @@ function drawFloorMarks() {
       ctx.beginPath(); ctx.moveTo(e.x, syf(e.y)); ctx.lineTo(e.x + Math.cos(e.aim) * 420, syf(e.y + Math.sin(e.aim) * 420)); ctx.stroke(); ctx.restore();
     }
     drawNewEnemyMarks(e);
+    drawEliteMarks(e); drawInspMarks(e);
     if (drawDroneMarks(e)) continue;
     if (e.type === "boss") { drawBossMarks(e); floorEllipse(e.x + 4, e.y + 8, e.r + 14, e.r * 0.8, "rgba(0,0,0,0.5)"); continue; }
     shadow(e.x, e.y, e.r);
@@ -3903,6 +4150,7 @@ function render() {
   if (banner) {
     const a = clamp(banner.t / 0.4, 0, 1) * clamp((2.4 - banner.t) / 0.2, 0, 1);
     ctx.globalAlpha = a; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    if (curZone() >= 3) { const bg = ctx.createLinearGradient(0, 0, W, 0); bg.addColorStop(0, "rgba(10,12,14,0)"); bg.addColorStop(0.2, "rgba(10,12,14,0.6)"); bg.addColorStop(0.8, "rgba(10,12,14,0.6)"); bg.addColorStop(1, "rgba(10,12,14,0)"); ctx.fillStyle = bg; ctx.fillRect(0, 168, W, banner.sub ? 88 : 64); }
     ctx.font = '400 40px "Black Han Sans", "IBM Plex Sans KR", sans-serif';
     ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillText(banner.title, W / 2 + 2, 200 + 2);
     ctx.fillStyle = C.hazard; ctx.fillText(banner.title, W / 2, 200);
@@ -3958,7 +4206,8 @@ $("btnFS").addEventListener("click", toggleFS);
   $("btnRotFS").addEventListener("click", () => { initAudio(); enterFS(); });
 }
 syncFSButton();
-const retry = () => (run && run.test === "z2" ? startZone2Test() : run && run.test === "b2" ? startBoss2Test() : run && run.test ? startBossTest() : startRun());
+const retry = () => (run && run.test === "z3" ? startZone3Test() : run && run.test === "z2" ? startZone2Test() : run && run.test === "b2" ? startBoss2Test() : run && run.test ? startBossTest() : startRun());
+$("btnZ3").addEventListener("click", () => { if (touchMode && canFS() && !isFS()) enterFS(); startZone3Test(); });
 $("btnBoss2").addEventListener("click", () => { if (touchMode && canFS() && !isFS()) enterFS(); startBoss2Test(); });
 $("btnRetry").addEventListener("click", retry);
 $("btnZ2").addEventListener("click", () => { if (touchMode && canFS() && !isFS()) enterFS(); startZone2Test(); });

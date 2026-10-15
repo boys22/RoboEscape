@@ -120,3 +120,7 @@ body.playing { touch-action: none; overscroll-behavior: none; overflow: hidden; 
   .card h2 { font-size: 24px; }
 }
 @media (pointer: coarse) and (orientation: portrait) { .ov.rotate { display: grid; } }
+
+/* 임시 테스트 버튼 줄 (마무리 단계에서 정리) */
+.btn-row.test-row { flex-wrap: nowrap; }
+.btn-row.test-row .btn { flex: 1 1 0; min-width: 0; padding: 6px 4px; font-size: 12px; }

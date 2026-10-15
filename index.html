@@ -9,12 +9,12 @@
 <meta name="apple-mobile-web-app-title" content="RoboEscape">
 <meta name="application-name" content="RoboEscape">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.8.2)">
+<meta name="description" content="RoboEscape: 고장 난 공장을 탈출하는 로봇 로그라이크 (b0.9.0)">
 <title>RoboEscape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Mono:wght@500;700&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="style.css?v=b0.8.2">
+<link rel="stylesheet" href="style.css?v=b0.9.0">
 </head>
 <body>
 <canvas id="ui" hidden></canvas>
@@ -22,7 +22,7 @@
 <div class="wrap">
   <div class="top">
     <h1>Robo<span>Escape</span></h1>
-    <div class="meta"><span>b0.8.2</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
+    <div class="meta"><span>b0.9.0</span><span>1구역 폐기장 · 로봇 5종</span><span>시드 <b id="seedLabel">-</b></span></div>
   </div>
 
   <div class="frame" id="frame">
@@ -54,9 +54,10 @@
           <dt>특수</dt><dd>무기별 특수 공격</dd>
           <dt>대시</dt><dd>무적 회피, 2회 충전</dd>
         </dl>
-        <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button><button class="btn ghost test" id="btnBoss" type="button">1구역 보스</button><button class="btn ghost test" id="btnZ2" type="button">2구역</button><button class="btn ghost test" id="btnBoss2" type="button">2구역 보스</button></div>
+        <div class="btn-row"><button class="btn" id="btnStart">시작하기</button><button class="btn ghost" id="btnFS" type="button" hidden>전체 화면</button></div>
+        <div class="btn-row test-row"><button class="btn ghost test" id="btnBoss" type="button">1구역 보스</button><button class="btn ghost test" id="btnZ2" type="button">2구역</button><button class="btn ghost test" id="btnBoss2" type="button">2구역 보스</button><button class="btn ghost test" id="btnZ3" type="button">3구역</button></div>
         <p class="fs-hint" id="fsHint" hidden>아이폰은 공유 버튼 → <b>홈 화면에 추가</b>로 열면 전체 화면으로 즐길 수 있어요.</p>
-        <p class="ver">버전 b0.8.2</p>
+        <p class="ver">버전 b0.9.0</p>
       </div>
     </div>
 
@@ -104,6 +105,6 @@
     <span><kbd>WASD</kbd> 이동</span><span><kbd>J</kbd> 공격</span><span><kbd>K</kbd> 점프 → <kbd>J</kbd> 내려찍기</span><span><kbd>L</kbd> 특수</span><span><kbd>Space</kbd> 대시</span><span><kbd>Esc</kbd> 일시정지</span><span><kbd>M</kbd> 소리</span>
   </div>
 </div>
-<script src="game.min.js?v=b0.8.2"></script>
+<script src="game.min.js?v=b0.9.0"></script>
 </body>
 </html>
