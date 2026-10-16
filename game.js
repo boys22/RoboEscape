@@ -108,6 +108,8 @@ const input = { atkP: false, jumpP: false, throwP: false, dashP: false, mouseL: 
 let touchMode = matchMedia("(pointer: coarse)").matches;
 const ATK_KEYS = ["KeyJ", "KeyZ"], JUMP_KEYS = ["KeyK", "KeyX"], THROW_KEYS = ["KeyL", "KeyC"], DASH_KEYS = ["Space", "ShiftLeft", "ShiftRight"];
 window.addEventListener("keydown", (e) => {
+  if (e.target && e.target.tagName === "INPUT") { if (e.code === "Enter" && e.target.id === "lbName") lbSubmit(); return; } // 닉네임 입력 중엔 게임 키 무시
+  if (!$("ovRank").hidden) { if (e.code === "Escape") lbClose(); return; }
   if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code) && state !== "title") e.preventDefault();
   if (e.repeat) return;
   touchMode = false;
@@ -553,6 +555,7 @@ function startRun() {
   recalcStats();
   enemies = []; bolts = []; pending = []; particles = []; texts = []; afterimages = []; waves = []; zaps = []; shots = []; fires = []; healDrops = []; oils = []; booms = []; releaseAllTouches();
   run = { score: 0, kills: 0, time: 0, cause: "", won: false, char: charId, weapon: weaponId, scrap: 0, batteryUsed: false };
+  lbStart(run);
   room = genRoom(1, "module");
   hitstop = 0; shakeAmt = 0; hurtFlash = 0;
   showBanner("1구역 · 폐기장", "방을 정리하면 강화 모듈을 얻어요");
@@ -2246,6 +2249,104 @@ function startBoss3Test() {
   enterDoor({ type: "boss" });
 }
 
+// ================= 순위표 (Supabase) =================
+// 브라우저는 표에 직접 쓰지 못하고, 서버 함수 re_start_run / re_submit_run 을 거쳐서만 기록돼요.
+const GAME_VER = "b1.1.0"; // 빌드할 때 자동으로 바뀌어요
+const LB = { url: "https://uxjoswktbbcclhteublq.supabase.co", key: "sb_publishable_xo3vg1LR9R3ZrhWNezam3w_ssJjiYPn", top: 20 };
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+let lbDevice = lsGet("re-device");
+if (!lbDevice) { lbDevice = "d" + Math.random().toString(36).slice(2) + Date.now().toString(36); lsSet("re-device", lbDevice); }
+async function lbCall(path, body) {
+  const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const tm = ctl ? setTimeout(() => ctl.abort(), 8000) : 0;
+  try {
+    const res = await fetch(LB.url + "/rest/v1/" + path, {
+      method: body ? "POST" : "GET",
+      headers: { apikey: LB.key, "Content-Type": "application/json", Accept: "application/json" },
+      body: body ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error((data && (data.message || data.error)) || "http_" + res.status);
+    return data;
+  } finally { if (tm) clearTimeout(tm); }
+}
+// 판 시작: 테스트 판이 아니면 서버에서 판 토큰을 받아둬요
+function lbStart(r) {
+  r.lb = { token: null, err: null, sent: false };
+  setTimeout(() => {
+    if (r.test || run !== r) return;
+    const ask = (retry) => lbCall("rpc/re_start_run", { p_device: lbDevice, p_version: GAME_VER })
+      .then((t) => { if (run === r) r.lb.token = t; })
+      .catch((e) => { if (run !== r) return; if (String(e.message).includes("too_fast") && retry) setTimeout(() => ask(false), 10500); else r.lb.err = String(e.message || e); });
+    ask(true);
+  }, 0);
+}
+function lbFmtTime(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+function lbWhere(row) { return row.cleared ? "탈출" : roomLabel(row.room); }
+// 결과 화면: 등록 양식
+function lbShowForm(won) {
+  const f = $("lbForm"), msg = $("lbMsg"), r = run;
+  f.hidden = true; msg.textContent = ""; msg.className = "lb-msg";
+  if (!r || r.test) { msg.textContent = r && r.test ? "테스트 판은 순위에 등록되지 않아요." : ""; return; }
+  if (!r.lb || (!r.lb.token && r.lb.err)) { msg.textContent = "순위 서버에 연결하지 못해서 이번 판은 등록할 수 없어요."; msg.className = "lb-msg bad"; return; }
+  if (r.lb.sent) return;
+  f.hidden = false;
+  $("lbName").value = lsGet("re-name") || "";
+  $("lbSubmit").disabled = false;
+  r.lb.final = { won };
+}
+async function lbSubmit() {
+  const r = run, msg = $("lbMsg"), btn = $("lbSubmit");
+  if (!r || !r.lb || r.lb.sent) return;
+  const name = $("lbName").value.trim();
+  if (name.length < 1 || name.length > 12) { msg.textContent = "닉네임은 1~12자로 적어주세요."; msg.className = "lb-msg bad"; return; }
+  if (!r.lb.token) { msg.textContent = "아직 서버 응답을 기다리는 중이에요. 잠시 후 다시 눌러주세요."; msg.className = "lb-msg"; return; }
+  lsSet("re-name", name);
+  btn.disabled = true; msg.textContent = "등록하는 중…"; msg.className = "lb-msg";
+  try {
+    const res = await lbCall("rpc/re_submit_run", {
+      p_token: r.lb.token, p_device: lbDevice, p_name: name, p_score: Math.round(r.score), p_time: Math.floor(r.time),
+      p_room: room.n, p_cleared: !!(r.lb.final && r.lb.final.won && curZone() >= ZONES), p_kills: r.kills, p_robot: r.char, p_weapon: r.weapon,
+    });
+    if (res && res.ok) {
+      r.lb.sent = true; $("lbForm").hidden = true;
+      msg.textContent = res.improved ? `등록 완료! 전체 ${res.rank}위 (최고 기록 갱신)` : `등록됐어요. ${name}의 최고 기록은 ${res.best}점 · 전체 ${res.rank}위`;
+      msg.className = "lb-msg good";
+    } else {
+      const why = { token: "이미 등록했거나 만료된 판이에요.", name: "닉네임을 확인해주세요.", time: "기록 검사를 통과하지 못했어요 (시간).", score: "기록 검사를 통과하지 못했어요 (점수).", range: "기록 검사를 통과하지 못했어요." }[res && res.error] || "등록하지 못했어요.";
+      msg.textContent = why; msg.className = "lb-msg bad";
+      if (res && res.error === "name") btn.disabled = false; else r.lb.sent = true;
+    }
+  } catch (e) { msg.textContent = "순위 서버에 연결하지 못했어요. 다시 눌러보세요."; msg.className = "lb-msg bad"; btn.disabled = false; }
+}
+// 순위표 창
+let lbPrevFocus = null;
+async function lbOpen() {
+  lbPrevFocus = document.activeElement;
+  const ov = $("ovRank"), list = $("rankList"), note = $("rankNote");
+  ov.hidden = false; list.textContent = ""; note.textContent = "불러오는 중…"; note.className = "rank-note";
+  $("btnRankClose").focus();
+  try {
+    const rows = await lbCall(`re_scores?select=name,score,time_sec,room,cleared,robot,weapon&order=score.desc,time_sec.asc&limit=${LB.top}`);
+    if (ov.hidden) return;
+    if (!rows || !rows.length) { note.textContent = "아직 등록된 기록이 없어요. 첫 기록의 주인공이 되어보세요!"; return; }
+    note.textContent = "총점 순 · 동점이면 짧은 시간이 위 · 닉네임마다 최고 기록 1개";
+    const me = lsGet("re-name");
+    rows.forEach((row, i) => {
+      const li = document.createElement("li");
+      if (me && row.name === me) li.className = "me";
+      const cells = [[String(i + 1), "rk"], [row.name, "nm"], [String(row.score), "sc"], [lbWhere(row), row.cleared ? "wh ok" : "wh"], [lbFmtTime(row.time_sec), "tm"],
+        [((CHARS[row.robot] || {}).name || "") + " · " + ((WEAPONS[row.weapon] || {}).name || ""), "bd"]];
+      for (const [t, c] of cells) { const s = document.createElement("span"); s.className = c; s.textContent = t; li.appendChild(s); }
+      list.appendChild(li);
+    });
+  } catch (e) {
+    note.textContent = "순위 서버에 연결하지 못했어요. (claude.ai 미리보기에서는 외부 연결이 막혀 있을 수 있어요. GitHub Pages 주소에서 열어보세요.)"; note.className = "rank-note bad";
+  }
+}
+function lbClose() { $("ovRank").hidden = true; if (lbPrevFocus && lbPrevFocus.focus) lbPrevFocus.focus(); }
+
 // ================= 웨이브 =================
 function spawnWave(w) {
   const n = localN(room.n), z2 = curZone() === 2;
@@ -3553,7 +3654,8 @@ function showResult(won) {
   const zt = (run.zt || []).map((t, i, a) => (i + 1) + "구역 " + fmt(t - (i ? a[i - 1] : 0)));
   $("deadBuild").textContent = buildText() + (fin && zt.length ? " · 구역 기록: " + zt.join(", ") : "");
   $("ovDead").hidden = false;
-  $("btnRetry").focus();
+  lbShowForm(won);
+  if ($("lbForm").hidden) $("btnRetry").focus(); else $("lbName").focus();
 }
 
 // ================= 캐릭터 (외형만 다름, 판정·능력 동일) =================
@@ -4562,4 +4664,8 @@ $("btnResume").addEventListener("click", resume);
 $("btnLeave").addEventListener("click", () => { if (state === "choice" && room.shopActive) { sfx("choose"); closeShop(); } });
 $("btnReroll").addEventListener("click", () => { if (state === "choice" && room.shopActive && run.scrap >= PRICE.reroll) { run.scrap -= PRICE.reroll; shopRerolls++; buildShop(); sfx("pickup"); openShop(); } });
 $("btnHome").addEventListener("click", goHome);
+$("btnRank").addEventListener("click", lbOpen);
+$("btnRank2").addEventListener("click", lbOpen);
+$("btnRankClose").addEventListener("click", lbClose);
+$("lbSubmit").addEventListener("click", lbSubmit);
 })();

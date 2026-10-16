@@ -1,4 +1,4 @@
-# RoboEscape (b1.0.0)
+# RoboEscape (b1.1.0)
 
 RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. 브라우저만 있으면 PC와 휴대폰에서 바로 플레이할 수 있어요.
 
@@ -12,6 +12,8 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 | `style.css` | 디자인(색, 배치, 모바일 화면) |
 | `game.min.js` | 실제로 실행되는 게임 코드 (압축본) |
 | `game.js` | 읽기 쉬운 원본 코드. 수정하거나 오류를 찾을 때 봐요 (실행엔 안 쓰여요) |
+
+`supabase/leaderboard.sql`은 순위 서버(Supabase)에 한 번만 실행하는 설정 파일이에요(아래 '순위표' 참고).
 
 네 파일은 **항상 같은 폴더**에 있어야 해요. 컴퓨터에서 `index.html`을 더블클릭해도 바로 실행돼요.
 
@@ -39,7 +41,7 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 2. 저장소 이름을 정해요. 예: `RoboEscape`
 3. **Public**을 선택하고 **Create repository**를 눌러요. 무료 계정은 Public이어야 Pages를 쓸 수 있어요.
 4. 저장소 화면에서 **uploading an existing file** 링크(또는 **Add file → Upload files**)를 눌러요.
-5. 이 폴더의 파일 6개(`index.html`, `style.css`, `game.min.js`, `game.js`, `README.md`, `CHANGELOG.md`)를 모두 끌어다 놓고, 메시지에 `b1.0.0`이라고 적은 뒤 **Commit changes**를 눌러요.
+5. 이 폴더의 파일 6개(`index.html`, `style.css`, `game.min.js`, `game.js`, `README.md`, `CHANGELOG.md`)를 모두 끌어다 놓고, 메시지에 `b1.1.0`이라고 적은 뒤 **Commit changes**를 눌러요.
 6. 저장소 **Settings → Pages**로 가서 아래처럼 설정하고 **Save**를 눌러요.
    - Source: **Deploy from a branch**
    - Branch: **main**, 폴더: **/ (root)**
@@ -68,10 +70,26 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 
 ### 버전 태그 남기기 (선택)
 
-저장소 오른쪽의 **Releases → Create a new release**에서 태그 이름을 `b1.0.0`로 만들어 두면, 나중에 이 버전으로 되돌아가기 쉬워요.
+저장소 오른쪽의 **Releases → Create a new release**에서 태그 이름을 `b1.1.0`로 만들어 두면, 나중에 이 버전으로 되돌아가기 쉬워요.
 
 ## 참고
 
 - 글꼴은 Google Fonts에서 불러와요. 인터넷이 안 되는 환경에서는 기본 글꼴로 보여요.
 - 고른 로봇은 그 브라우저에만 기억돼요.
-- 순위표는 아직 없어요. 맵과 보상 후보는 판마다 무작위로 정해져요.
+- 맵과 보상 후보는 판마다 무작위로 정해져요.
+
+## 순위표 (Supabase)
+
+- 시작 화면의 **순위**, 결과 화면의 **순위 보기**로 TOP 20을 볼 수 있어요. 총점 순이고, 동점이면 시간이 짧은 쪽이 위예요. 닉네임마다 최고 기록 1개만 남아요.
+- 판이 끝나면 결과 화면에서 닉네임(1~12자)을 적고 **기록 등록**을 누르면 돼요. 닉네임은 그 브라우저에 기억돼요.
+- 테스트 버튼으로 시작한 판은 등록되지 않아요.
+- 기록은 서버 함수가 검사한 뒤에만 저장돼요(판 토큰 1회용, 방당 최소 8초, 점수 상한, 탈출은 방 21 도달 시만).
+
+### 처음 한 번만: 서버 설정
+1. Supabase 대시보드 → **SQL Editor** → `supabase/leaderboard.sql` 내용을 붙여 넣고 **Run**.
+2. 게임 코드(`game.js`/`game.min.js`)에는 프로젝트 주소와 **공개 키(publishable key)**가 들어 있어요. 공개용 키라 노출돼도 괜찮아요. 비밀 키(secret / service_role)는 절대 코드에 넣지 마세요.
+
+### 관리
+- 수상한 기록 지우기: Supabase → **Table Editor → re_scores** → 그 줄 삭제.
+- 무료 요금제는 일주일 동안 접속이 없으면 프로젝트가 잠들어요. 대시보드에서 **Restore**를 누르면 데이터 그대로 다시 켜져요.
+- claude.ai 미리보기 링크에서는 외부 연결이 막혀 순위가 안 보일 수 있어요. GitHub Pages 주소에서 이용하세요.
