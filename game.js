@@ -45,7 +45,9 @@ function initAudio() {
   if (AC) { if (AC.state === "suspended") AC.resume(); return; }
   try {
     AC = new (window.AudioContext || window.webkitAudioContext)();
-    master = AC.createGain(); master.gain.value = 0.45; master.connect(AC.destination);
+    master = AC.createGain(); master.gain.value = muted ? 0 : 0.45; master.connect(AC.destination);
+    sfxBus = AC.createGain(); sfxBus.gain.value = SET.sfx; sfxBus.connect(master);
+    musBus = AC.createGain(); musBus.gain.value = 0; musBus.connect(master);
     noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
     const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   } catch (e) { AC = null; }
@@ -54,14 +56,14 @@ function tone(type, f0, f1, dur, vol, delay = 0) {
   const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + dur + 0.02);
 }
 function noise(dur, vol, ftype, f0, f1, q = 1) {
   const t = AC.currentTime, s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
   s.buffer = noiseBuf; f.type = ftype; f.Q.value = q;
   f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + dur + 0.02);
+  s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t); s.stop(t + dur + 0.02);
 }
 function sfx(n) {
   if (!AC || muted) return;
@@ -98,8 +100,92 @@ function sfx(n) {
     case "revive": tone("sine", 200, 900, 0.5, 0.12); tone("triangle", 400, 1600, 0.4, 0.06, 0.1); break;
     case "heal": tone("sine", 660, 990, 0.1, 0.05); break;
     case "land": tone("sine", 140, 45, 0.14, 0.14); noise(0.1, 0.08, "lowpass", 900, 150); break;
+    case "lose": tone("square", 392, 380, 0.22, 0.06); tone("square", 330, 320, 0.22, 0.06, 0.22); tone("square", 262, 250, 0.22, 0.06, 0.44); tone("sawtooth", 196, 60, 0.9, 0.08, 0.66); break;
+    case "copy": tone("triangle", 880, 880, 0.06, 0.05); tone("triangle", 1320, 1320, 0.1, 0.05, 0.06); break;
   }
 }
+// ================= 설정 · 배경음 =================
+const SET = { sfx: 0.8, mus: 0.6, vib: true };
+try { const s = JSON.parse(localStorage.getItem("re-settings") || "null"); if (s) Object.assign(SET, s); } catch (e) {}
+function saveSettings() { try { localStorage.setItem("re-settings", JSON.stringify(SET)); } catch (e) {} }
+let sfxBus = null, musBus = null;
+function applyVolumes() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  master.gain.setTargetAtTime(muted ? 0 : 0.45, t, 0.03);
+  sfxBus.gain.setTargetAtTime(SET.sfx, t, 0.03);
+  musBus.gain.setTargetAtTime(SET.mus * 0.55 * (MUS.duck ? 0.35 : 1), t, 0.15);
+}
+// 곡: 16스텝(16분음표) × 4마디 반복. 숫자는 근음 기준 반음, 코드톤 표기는 아래 CH
+const CH = { m: [0, 3, 7, 10, 12, 15, 19, 22], M: [0, 4, 7, 11, 12, 16, 19, 23] };
+const TRACKS = {
+  title: { bpm: 84, root: 45, q: "m", prog: [0, -4, -2, -5], bass: "x.......x.......", arp: "0.2.4.2.5.4.2.4.", lead: "triangle", lv: 0.05, pad: 0.03, k: "x.......x.......", s: "", h: "....x.......x...", cut: 900 },
+  z1: { bpm: 104, root: 45, q: "m", prog: [0, 0, -2, -5], bass: "x..x..x.x..x.o..", arp: "0..2..4.3..2..1.", lead: "square", lv: 0.022, pad: 0.025, k: "x...x...x...x..x", s: "....x.......x...", h: "..x...x...x...x.", cut: 700 },
+  z2: { bpm: 118, root: 50, q: "m", prog: [0, 3, 5, 3], bass: "x.x.x.o.x.x.x.f.", arp: "024.024.024.0246", lead: "square", lv: 0.02, pad: 0.02, k: "x...x...x...x...", s: "....x.......x..x", h: "x.xxx.xxx.xxx.xx", cut: 1100 },
+  z3: { bpm: 96, root: 52, q: "m", prog: [0, 1, 0, -2], bass: "x.......x...o...", arp: "0...4...2...6...", lead: "sine", lv: 0.06, pad: 0.035, k: "x.......x.....x.", s: "............x...", h: "x...x...x...x...", cut: 600 },
+  boss1: { bpm: 132, root: 45, q: "m", prog: [0, 0, 1, -2], bass: "xxo.xxo.xxo.xof.", arp: "0.0.3.0.5.0.3.2.", lead: "sawtooth", lv: 0.018, pad: 0, k: "x.x.x.x.x.x.x.x.", s: "....x.......x.x.", h: "xxxxxxxxxxxxxxxx", cut: 1400 },
+  boss2: { bpm: 140, root: 50, q: "m", prog: [0, 1, 3, 1], bass: "x.xox.xox.xox.of", arp: "02460246", lead: "square", lv: 0.02, pad: 0, k: "x..xx..xx..xx.x.", s: "....x.......x...", h: "x.x.x.x.x.x.x.x.", cut: 1500 },
+  boss3: { bpm: 148, root: 52, q: "m", prog: [0, 1, -2, -1], bass: "xoxoxoxoxoxoxofo", arp: "0246420264206420", lead: "sawtooth", lv: 0.016, pad: 0.02, k: "x...x..xx...x..x", s: "....x.......x.xx", h: "xxxxxxxxxxxxxxxx", cut: 1800 },
+  ending: { bpm: 88, root: 48, q: "M", prog: [0, 5, -3, 7], bass: "x.......x...f...", arp: "0.2.4.6.4.2.4.6.", lead: "triangle", lv: 0.06, pad: 0.04, k: "x.......x.......", s: "....x.......x...", h: "..x...x...x...x.", cut: 1200 },
+};
+const MUS = { cur: null, next: 0, step: 0, timer: 0, duck: false, gen: 0 };
+const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+function mNote(type, f, t, dur, vol, cut) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  if (cut) { const fl = AC.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.value = cut; o.connect(fl); fl.connect(g); } else o.connect(g);
+  g.connect(musBus); o.start(t); o.stop(t + dur + 0.03);
+}
+function mNoise(t, dur, vol, ftype, freq) {
+  const s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = noiseBuf; f.type = ftype; f.frequency.value = freq;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(musBus); s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+}
+function mKick(t) { const o = AC.createOscillator(), g = AC.createGain(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.16); g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2); o.connect(g); g.connect(musBus); o.start(t); o.stop(t + 0.22); }
+function musicStep(tr, step, t) {
+  const sl = 60 / tr.bpm / 4, bar = Math.floor(step / 16) % 4, i = step % 16, root = tr.root + tr.prog[bar], ch = CH[tr.q];
+  const b = tr.bass[i];
+  if (b && b !== ".") mNote("sawtooth", mtof(root - 12 + (b === "o" ? 12 : b === "f" ? 7 : 0)), t, sl * 1.8, 0.11, tr.cut);
+  const a = tr.arp[i % tr.arp.length];
+  if (a && a !== ".") mNote(tr.lead, mtof(root + 12 + ch[+a]), t, sl * 1.6, tr.lv, 0);
+  if (tr.pad && i === 0) for (const d of [0, 2, 4]) mNote("triangle", mtof(root + ch[d]), t, sl * 15, tr.pad, 1600);
+  if (tr.k[i] === "x") mKick(t);
+  if (tr.s && tr.s[i] === "x") { mNoise(t, 0.13, 0.16, "bandpass", 1900); mNote("triangle", 190, t, 0.08, 0.06, 0); }
+  if (tr.h && tr.h[i] === "x") mNoise(t, 0.035, 0.05, "highpass", 7500);
+}
+function musicTick() {
+  if (!AC || !MUS.cur) return;
+  const tr = TRACKS[MUS.cur], sl = 60 / tr.bpm / 4;
+  if (MUS.next < AC.currentTime) MUS.next = AC.currentTime + 0.05;
+  while (MUS.next < AC.currentTime + 0.2) { musicStep(tr, MUS.step, MUS.next); MUS.next += sl; MUS.step = (MUS.step + 1) % 64; }
+}
+function playMusic(name) {
+  if (MUS.cur === name) return;
+  MUS.cur = name; MUS.step = 0; if (AC) MUS.next = AC.currentTime + 0.1;
+}
+// 상황에 맞는 곡 고르기 (매 프레임)
+function musicFor() {
+  if (state === "title") return "title";
+  if (state === "ending") return "ending";
+  if (state === "dead") return run && run.won ? "ending" : null;
+  if (!room) return null;
+  const z = curZone(), b = room.boss;
+  if (room.kind === "boss" && room.bossSpawned && b && !b.dead) return "boss" + z;
+  return "z" + z;
+}
+function musicUpdate() {
+  if (!AC) return;
+  const want = musicFor();
+  MUS.duck = state === "pause" || state === "choice";
+  if (want !== MUS.cur) { if (want) playMusic(want); else MUS.cur = null; }
+  applyVolumes();
+  musicTick();
+}
+// 첫 터치·키 입력에서 소리 켜기 (브라우저 자동 재생 정책)
+function unlockAudio() { initAudio(); window.removeEventListener("pointerdown", unlockAudio); window.removeEventListener("keydown", unlockAudio); }
+window.addEventListener("pointerdown", unlockAudio); window.addEventListener("keydown", unlockAudio);
 
 // ================= 입력 =================
 // PC: 키보드(+마우스 버튼 보조), 모바일: 화면 조이스틱과 버튼. 조준은 둘 다 자동.
@@ -108,7 +194,7 @@ const input = { atkP: false, jumpP: false, throwP: false, dashP: false, mouseL: 
 let touchMode = matchMedia("(pointer: coarse)").matches;
 const ATK_KEYS = ["KeyJ", "KeyZ"], JUMP_KEYS = ["KeyK", "KeyX"], THROW_KEYS = ["KeyL", "KeyC"], DASH_KEYS = ["Space", "ShiftLeft", "ShiftRight"];
 window.addEventListener("keydown", (e) => {
-  if (e.target && e.target.tagName === "INPUT") { if (e.code === "Enter" && e.target.id === "lbName") lbSubmit(); return; } // 닉네임 입력 중엔 게임 키 무시
+  if (e.target && e.target.tagName === "INPUT" && e.target.type === "text") { if (e.code === "Enter" && e.target.id === "lbName") lbSubmit(); return; } // 닉네임 입력 중엔 게임 키 무시
   if (!$("ovRank").hidden) { if (e.code === "Escape") lbClose(); return; }
   if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code) && state !== "title") e.preventDefault();
   if (e.repeat) return;
@@ -404,7 +490,7 @@ function moveVec() {
   if (l > 1) { mx /= l; my /= l; }
   return { x: mx, y: my, len: Math.min(1, l) };
 }
-function buzz(ms) { if (touchMode && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } }
+function buzz(ms) { if (SET.vib && touchMode && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } }
 
 // ================= 유틸 =================
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -2251,7 +2337,7 @@ function startBoss3Test() {
 
 // ================= 순위표 (Supabase) =================
 // 브라우저는 표에 직접 쓰지 못하고, 서버 함수 re_start_run / re_submit_run 을 거쳐서만 기록돼요.
-const GAME_VER = "b1.1.0"; // 빌드할 때 자동으로 바뀌어요
+const GAME_VER = "b1.2.0"; // 빌드할 때 자동으로 바뀌어요
 const LB = { url: "https://uxjoswktbbcclhteublq.supabase.co", key: "sb_publishable_xo3vg1LR9R3ZrhWNezam3w_ssJjiYPn", top: 20 };
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -3633,7 +3719,7 @@ function takePickup(type) {
   if (state !== "choice" && !room.doorOpen) openDoors();
 }
 
-function die() { state = "dead"; showResult(false); }
+function die() { state = "dead"; sfx("lose"); showResult(false); }
 function buildText() {
   const p = player;
   const mods = SLOT_ORDER.map((sl) => p.mods[sl]).filter(Boolean).map((m) => MODS[m.id].name + (m.r ? "(" + RARITY[m.r].name + ")" : ""));
@@ -4627,6 +4713,7 @@ function frame(now) {
       if (state === "play" || state === "dead") update(STEP);
     }
   } else { acc = 0; if (state === "ending") updateEnding(dt); }
+  musicUpdate();
   layoutUI();
   render();
   drawPanels();
@@ -4668,4 +4755,33 @@ $("btnRank").addEventListener("click", lbOpen);
 $("btnRank2").addEventListener("click", lbOpen);
 $("btnRankClose").addEventListener("click", lbClose);
 $("lbSubmit").addEventListener("click", lbSubmit);
+// 설정 (일시정지 화면): 효과음·배경음 볼륨, 진동
+{
+  const sv = $("setSfx"), mv = $("setMus"), vb = $("setVib");
+  sv.value = Math.round(SET.sfx * 100); mv.value = Math.round(SET.mus * 100); vb.checked = SET.vib;
+  sv.addEventListener("input", () => { SET.sfx = sv.value / 100; saveSettings(); applyVolumes(); });
+  sv.addEventListener("change", () => sfx("hit"));
+  mv.addEventListener("input", () => { SET.mus = mv.value / 100; saveSettings(); applyVolumes(); });
+  vb.addEventListener("change", () => { SET.vib = vb.checked; saveSettings(); if (SET.vib) buzz(30); });
+}
+// 숨은 개발자 메뉴: 시작 화면의 버전 글자를 2초 안에 5번 누르면 테스트 버튼이 나타나요
+{
+  let taps = 0, last = 0;
+  $("verTag").addEventListener("click", () => {
+    const now = performance.now(); taps = now - last < 2000 ? taps + 1 : 1; last = now;
+    if (taps >= 5) { taps = 0; const row = $("testRow"); row.hidden = !row.hidden; sfx("choose"); }
+  });
+}
+// 결과 복사
+$("btnShare").addEventListener("click", async () => {
+  const r = run, fin = r && r.won && curZone() >= ZONES;
+  const where = fin ? "공장 탈출 성공!" : roomLabel(room.n) + " 도달";
+  const url = /^https?:/.test(location.href) && !/claude\.ai/.test(location.href) ? "\n" + location.href.split("#")[0].split("?")[0] : "";
+  const text = `RoboEscape ${GAME_VER} · ${where}\n점수 ${r.score} · 처치 ${r.kills} · ${lbFmtTime(r.time)} · ${CHARS[r.char].name}/${WEAPONS[r.weapon].name}${url}`;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+    try { const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); ta.remove(); } catch (e2) {}
+  }
+  const b = $("btnShare"); b.textContent = ok ? "복사했어요" : "복사 실패"; if (ok) sfx("copy"); setTimeout(() => (b.textContent = "결과 복사"), 1500);
+});
 })();

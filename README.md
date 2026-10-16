@@ -1,4 +1,4 @@
-# RoboEscape (b1.1.0)
+# RoboEscape (b1.2.0)
 
 RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. 브라우저만 있으면 PC와 휴대폰에서 바로 플레이할 수 있어요.
 
@@ -12,6 +12,8 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 | `style.css` | 디자인(색, 배치, 모바일 화면) |
 | `game.min.js` | 실제로 실행되는 게임 코드 (압축본) |
 | `game.js` | 읽기 쉬운 원본 코드. 수정하거나 오류를 찾을 때 봐요 (실행엔 안 쓰여요) |
+| `assets/` | 홈 화면 아이콘, 탭 아이콘, 공유 미리보기 이미지 |
+| `manifest.webmanifest` | 홈 화면에 추가했을 때 앱처럼 열리게 하는 설정 (가로 · 전체 화면) |
 
 `supabase/leaderboard.sql`은 순위 서버(Supabase)에 한 번만 실행하는 설정 파일이에요(아래 '순위표' 참고).
 
@@ -41,7 +43,7 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 2. 저장소 이름을 정해요. 예: `RoboEscape`
 3. **Public**을 선택하고 **Create repository**를 눌러요. 무료 계정은 Public이어야 Pages를 쓸 수 있어요.
 4. 저장소 화면에서 **uploading an existing file** 링크(또는 **Add file → Upload files**)를 눌러요.
-5. 이 폴더의 파일 6개(`index.html`, `style.css`, `game.min.js`, `game.js`, `README.md`, `CHANGELOG.md`)를 모두 끌어다 놓고, 메시지에 `b1.1.0`이라고 적은 뒤 **Commit changes**를 눌러요.
+5. 이 폴더 안의 **파일과 폴더를 전부**(assets, supabase 폴더 포함) 끌어다 놓고, 메시지에 `b1.2.0`이라고 적은 뒤 **Commit changes**를 눌러요.
 6. 저장소 **Settings → Pages**로 가서 아래처럼 설정하고 **Save**를 눌러요.
    - Source: **Deploy from a branch**
    - Branch: **main**, 폴더: **/ (root)**
@@ -70,7 +72,7 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 
 ### 버전 태그 남기기 (선택)
 
-저장소 오른쪽의 **Releases → Create a new release**에서 태그 이름을 `b1.1.0`로 만들어 두면, 나중에 이 버전으로 되돌아가기 쉬워요.
+저장소 오른쪽의 **Releases → Create a new release**에서 태그 이름을 `b1.2.0`로 만들어 두면, 나중에 이 버전으로 되돌아가기 쉬워요.
 
 ## 참고
 
@@ -93,3 +95,17 @@ RoboEscape는 고장 난 공장을 탈출하는 로봇 로그라이크예요. �
 - 수상한 기록 지우기: Supabase → **Table Editor → re_scores** → 그 줄 삭제.
 - 무료 요금제는 일주일 동안 접속이 없으면 프로젝트가 잠들어요. 대시보드에서 **Restore**를 누르면 데이터 그대로 다시 켜져요.
 - claude.ai 미리보기 링크에서는 외부 연결이 막혀 순위가 안 보일 수 있어요. GitHub Pages 주소에서 이용하세요.
+
+## 설정과 숨은 메뉴
+
+- **소리 설정:** 게임 중 일시정지(Esc 또는 일시정지 버튼)에서 효과음·배경음 볼륨과 진동을 바꿀 수 있어요. 그 브라우저에 기억돼요. M 키는 전체 소리 켜기/끄기예요.
+- **배경음:** 시작 화면, 구역 3곳, 보스 3마리, 엔딩마다 다른 곡이 나와요. 외부 음원 없이 브라우저에서 실시간으로 만들어요.
+- **개발자 메뉴:** 시작 화면 아래 **버전 글자를 2초 안에 5번** 누르면 테스트 버튼(1구역 보스 · 2구역 · 2구역 보스 · 3구역 · 최종 보스)이 나타나요. 다시 5번 누르면 숨겨져요. 테스트 판은 순위에 등록되지 않아요.
+
+## 공유 미리보기 (카카오톡·슬랙 등)
+
+`index.html`의 `og:image`가 `assets/og-image.png`(상대 주소)로 되어 있어요. 메신저 미리보기는 전체 주소가 필요해서, GitHub Pages 주소가 정해지면 아래처럼 바꾸면 이미지가 떠요.
+
+```html
+<meta property="og:image" content="https://<아이디>.github.io/RoboEscape/assets/og-image.png">
+```
